@@ -1,24 +1,31 @@
-version: '3'
+version: '3.8'
 
 services:
   web:
     build: .
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app
     ports:
       - "8000:8000"
     depends_on:
       - redis
-  
-  redis:
-    image: redis
-  
+
   celery:
     build: .
-    command: celery -A fkapi worker --loglevel=info
+    command: celery -A myproject worker --loglevel=info
+    volumes:
+      - .:/app
     depends_on:
       - redis
-  
-  celery-beat:
+
+  celerybeat:
     build: .
-    command: celery -A fkapi beat --loglevel=info
+    command: celery -A myproject beat --loglevel=info --scheduler django
+    volumes:
+      - .:/app
     depends_on:
       - redis
+
+  redis:
+    image: redis
