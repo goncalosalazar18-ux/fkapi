@@ -103,6 +103,12 @@ WSGI_APPLICATION = 'fkapi.wsgi.application'
 
 load_dotenv()
 
+print("Host: ", os.getenv('POSTGRES_HOST'))
+print("DB: ", os.getenv('POSTGRES_DB'))
+print("User: ", os.getenv('POSTGRES_USER'))
+print("Password: ", os.getenv('POSTGRES_PASSWORD'))
+
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
