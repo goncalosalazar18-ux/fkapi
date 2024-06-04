@@ -3,7 +3,7 @@ services:
     build: .
     command: python manage.py runserver 0.0.0.0:8000
     volumes:
-      - .:/app
+      - .:/fkapi
     ports:
       - "8000:8000"
     depends_on:
@@ -11,17 +11,17 @@ services:
 
   celery:
     build: .
-    command: celery -A myproject worker --loglevel=info
+    command: celery -A fkapi worker --loglevel=info
     volumes:
-      - .:/app
+      - .:/fkapi
     depends_on:
       - redis
 
   celerybeat:
     build: .
-    command: celery -A myproject beat --loglevel=info --scheduler django
+    command: celery -A fkapi beat --loglevel=info --scheduler django
     volumes:
-      - .:/app
+      - .:/fkapi
     depends_on:
       - redis
 
