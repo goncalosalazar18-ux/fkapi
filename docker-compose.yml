@@ -3,7 +3,7 @@ services:
     build: .
     command: python manage.py runserver 0.0.0.0:8000
     volumes:
-      - .:/fkapi
+      - .:/app  # Cambiar de /fkapi a /app
     ports:
       - "8000:8000"
     depends_on:
@@ -13,7 +13,7 @@ services:
     build: .
     command: celery -A fkapi worker --loglevel=info
     volumes:
-      - .:/fkapi
+      - .:/app  # Cambiar de /fkapi a /app
     depends_on:
       - redis
 
@@ -21,7 +21,7 @@ services:
     build: .
     command: celery -A fkapi beat --loglevel=info --scheduler django
     volumes:
-      - .:/fkapi
+      - .:/app  # Cambiar de /fkapi a /app
     depends_on:
       - redis
 
