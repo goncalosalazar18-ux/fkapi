@@ -103,10 +103,13 @@ WSGI_APPLICATION = 'fkapi.wsgi.application'
 
 load_dotenv()
 
-print("Host: ", os.getenv('POSTGRES_HOST'))
-print("DB: ", os.getenv('POSTGRES_DB'))
-print("User: ", os.getenv('POSTGRES_USER'))
-print("Password: ", os.getenv('POSTGRES_PASSWORD'))
+import logging
+
+logger = logging.getLogger(__name__)
+logger.info("Host: %s", os.getenv('POSTGRES_HOST'))
+logger.info("DB: %s", os.getenv('POSTGRES_DB'))
+logger.info("User: %s", os.getenv('POSTGRES_USER'))
+logger.info("Password: %s", os.getenv('POSTGRES_PASSWORD'))
 
 
 DATABASES = {
