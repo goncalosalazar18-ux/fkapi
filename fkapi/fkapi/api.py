@@ -14,7 +14,7 @@ def search_clubs(request, keyword: str):
     clubs = Club.objects.filter(
         Q(name__trigram_word_similar=keyword) | Q(
             slug__trigram_word_similar=keyword)
-    )[:10]
+    )[:10].order_by('id')
     return clubs
 
 
