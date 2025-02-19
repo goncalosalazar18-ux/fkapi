@@ -1,16 +1,15 @@
 import random
 
-PROXY_LIST = [f"p.webshare.io:100{str(i).zfill(2)}" for i in range(100)]
-
-
 def get_proxy() -> dict:
     """
-    Returns a random proxy from the PROXY_LIST
+    Returns the Webshare proxy configuration
     """
-    proxy = random.choice(PROXY_LIST)
-    proxy_formatted = {
-        'http': f'http://{proxy}',
-        'https': f'http://{proxy}',
-    }
+    proxy = "p.webshare.io:80"
+    username = "gjxexemi-rotate"
+    password = "4ca9ukvy4h48"
     
+    proxy_formatted = {
+        'http': f'http://{username}:{password}@{proxy}',
+        'https': f'http://{username}:{password}@{proxy}'
+    }
     return proxy_formatted

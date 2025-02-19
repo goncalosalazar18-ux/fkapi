@@ -66,10 +66,10 @@ admin.site.register(Brand, BrandAdmin)
 
 
 class KitAdmin(admin.ModelAdmin):
-    list_display = ('image_thumb', 'name', 'brand',
+    list_display = ('id', 'image_thumb', 'name', 'brand',
                     'season', 'type', 'team', 'competitions')
     readonly_fields = ('image_thumb',)
-    search_fields = ('name', 'slug')
+    search_fields = ('name', 'slug','id')
 
     def image_thumb(self, obj):
         return format_html('<img src="{}" height="200px" />', obj.main_img_url)
