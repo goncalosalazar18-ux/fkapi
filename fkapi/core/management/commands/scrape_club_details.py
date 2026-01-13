@@ -1,7 +1,9 @@
-from core.models import Club, Competition, Kit, Season
-from core.scrapers import scrape_club
-from django.core.management.base import BaseCommand
 from concurrent.futures import ThreadPoolExecutor
+
+from django.core.management.base import BaseCommand
+
+from core.models import Club
+from core.scrapers import scrape_club
 
 
 class Command(BaseCommand):

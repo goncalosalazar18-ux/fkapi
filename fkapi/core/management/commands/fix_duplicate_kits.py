@@ -1,7 +1,8 @@
 from django.core.management.base import BaseCommand
-from core.models import Kit
 from django.db.models import Count
-from django.utils import timezone
+
+from core.models import Kit
+
 
 class Command(BaseCommand):
     help = 'Identifica y resuelve kits duplicados basados en el slug'

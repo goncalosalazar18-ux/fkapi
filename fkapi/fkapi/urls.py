@@ -14,26 +14,28 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
-from django.contrib import admin
-from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.contrib import admin
+from django.urls import path
+
 from core.views import (
-    assign_countries, 
-    update_competition_country,
-    propagate_countries,
-    competition_clubs,
-    review_country_assignments,
-    get_club_competitions,
-    suggest_competition_countries,
+    assign_countries,
     clubs_without_country,
-    random_kits_view,
-    random_clubs_view,
-    load_more_kits,
+    competition_clubs,
+    get_club_competitions,
     load_more_clubs,
+    load_more_kits,
     merge_suggestions_view,
-    top_clubs_by_country
+    propagate_countries,
+    random_clubs_view,
+    random_kits_view,
+    review_country_assignments,
+    suggest_competition_countries,
+    top_clubs_by_country,
+    update_competition_country,
 )
+
 from .api import api
 
 urlpatterns = [

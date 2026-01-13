@@ -1,9 +1,8 @@
 import os
 import random
-from typing import Optional, Dict
 
 
-def _build_proxy(url: str) -> Dict[str, str]:
+def _build_proxy(url: str) -> dict[str, str]:
     """Build a requests-compatible proxies dict from a single proxy URL.
 
     The same proxy is applied for both HTTP and HTTPS requests. The URL can
@@ -15,7 +14,7 @@ def _build_proxy(url: str) -> Dict[str, str]:
     }
 
 
-def get_proxy() -> Optional[dict]:
+def get_proxy() -> dict | None:
     """
     Return a proxy configuration for requests if environment variables are set.
 

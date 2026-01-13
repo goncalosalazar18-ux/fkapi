@@ -1,5 +1,6 @@
+
 from ninja import Schema
-from typing import List, Optional
+
 
 class ClubSerializer(Schema):
     id: int
@@ -26,38 +27,38 @@ class SeasonSerializer(Schema):
 
 
 class ClubJsonSchema(Schema):
-    id: Optional[int] = None
-    id_fka: Optional[int] = None
+    id: int | None = None
+    id_fka: int | None = None
     name: str
     slug: str
-    logo: Optional[str] = None
-    logo_dark: Optional[str] = None
-    country: Optional[str] = None
+    logo: str | None = None
+    logo_dark: str | None = None
+    country: str | None = None
 
 class SeasonJsonSchema(Schema):
-    id: Optional[int] = None
+    id: int | None = None
     year: str
     first_year: str
-    second_year: Optional[str] = None
+    second_year: str | None = None
 
 class CompetitionJsonSchema(Schema):
-    id: Optional[int] = None
+    id: int | None = None
     name: str
     slug: str
-    logo: Optional[str] = None
-    logo_dark: Optional[str] = None
-    country: Optional[str] = None
+    logo: str | None = None
+    logo_dark: str | None = None
+    country: str | None = None
 
 
 class TypeJsonSchema(Schema):
     name: str
 
 class BrandJsonSchema(Schema):
-    id: Optional[int] = None
+    id: int | None = None
     name: str
     slug: str
-    logo: Optional[str] = None
-    logo_dark: Optional[str] = None
+    logo: str | None = None
+    logo_dark: str | None = None
 
 class ColorJsonSchema(Schema):
     name: str
@@ -68,10 +69,10 @@ class KitJsonSchema(Schema):
     slug: str
     team: ClubJsonSchema
     season: SeasonJsonSchema
-    competition: List[CompetitionJsonSchema]
+    competition: list[CompetitionJsonSchema]
     type: TypeJsonSchema
     brand: BrandJsonSchema
-    design: Optional[str] = None
-    primary_color: Optional[ColorJsonSchema] = None
-    secondary_color: Optional[List[ColorJsonSchema]] = None
+    design: str | None = None
+    primary_color: ColorJsonSchema | None = None
+    secondary_color: list[ColorJsonSchema] | None = None
     main_img_url: str

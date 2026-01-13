@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -32,7 +31,7 @@ def _retry_strategy() -> Retry:
     )
 
 
-def get_session(headers: Optional[dict] = None) -> requests.Session:
+def get_session(headers: dict | None = None) -> requests.Session:
     """Return a configured requests.Session with retries and default headers."""
     session = requests.Session()
     adapter = HTTPAdapter(max_retries=_retry_strategy())
@@ -50,7 +49,7 @@ SCRAPER_REUSE_SESSION = os.getenv("SCRAPER_REUSE_SESSION", "false").lower() in (
 _SHARED_SESSION = get_session() if SCRAPER_REUSE_SESSION else None
 
 
-def get_scraper_session() -> Optional[requests.Session]:
+def get_scraper_session() -> requests.Session | None:
     """Return a shared scraper session if reuse is enabled; otherwise None."""
     return _SHARED_SESSION if SCRAPER_REUSE_SESSION else None
 
@@ -59,10 +58,10 @@ def http_get(
     url: str,
     *,
     use_proxy: bool = False,
-    timeout: Optional[float] = None,
-    session: Optional[requests.Session] = None,
-    headers: Optional[dict] = None,
-    proxies: Optional[dict] = None,
+    timeout: float | None = None,
+    session: requests.Session | None = None,
+    headers: dict | None = None,
+    proxies: dict | None = None,
 ) -> requests.Response:
     """Helper to GET a URL with sane defaults.
 

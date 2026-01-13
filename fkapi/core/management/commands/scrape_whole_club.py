@@ -1,7 +1,10 @@
-from core.scrapers import scrape_whole_club
-from django.core.management.base import BaseCommand
-from core.models import Club,Kit
 from concurrent.futures import ThreadPoolExecutor
+
+from django.core.management.base import BaseCommand
+
+from core.models import Club
+from core.scrapers import scrape_whole_club
+
 
 class Command(BaseCommand):
     help = 'Scrape whole club'

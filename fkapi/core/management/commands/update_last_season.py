@@ -1,13 +1,15 @@
 # Update photos from last season as some of them may had been leaked photos and now they are oficcial photos
 #Season 2024-25 or 2024
+import concurrent.futures
+import os
+from datetime import timedelta
+
+from django.core.management.base import BaseCommand
+from django.utils import timezone
+
 from core.models import Kit, Season
 from core.scrapers import scrape_kit
-from colorama import Fore
-from django.core.management.base import BaseCommand
-import concurrent.futures
-from datetime import datetime, timedelta
-from django.utils import timezone
-import os
+
 
 class Command(BaseCommand):
     help = 'Updates kit photos from the current season (both YYYY and YYYY-YY formats)'
@@ -28,7 +30,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         # Force update specific seasons: 2026, 2025, 2025-26
         target_seasons = ['2026', '2025', '2025-26']
-        
+
         self.stdout.write(
             self.style.SUCCESS(f"Updating kits for seasons: {', '.join(target_seasons)}")
         )
@@ -49,7 +51,7 @@ class Command(BaseCommand):
         def update_kit(kit: Kit) -> tuple[bool, str, str]:
             """
             Updates a single kit.
-            
+
             Returns:
                 tuple[bool, str, str]: (success, message, error_type)
                 error_type can be: 'success', 'moved', 'network', 'other'
@@ -86,7 +88,7 @@ class Command(BaseCommand):
         network_error_count = 0
         workers = options['workers']
         force = options['force']
-        
+
         # Get total kit count for progress tracking
         total_kits = 0
         for season in seasons:
@@ -96,7 +98,7 @@ class Command(BaseCommand):
                     last_updated__lt=timezone.now() - timedelta(days=7)
                 )
             total_kits += kits.count()
-        
+
         self.stdout.write(
             self.style.SUCCESS(f"Total kits to process: {total_kits}")
         )
@@ -104,7 +106,7 @@ class Command(BaseCommand):
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
             futures_to_kits = {}
             processed_count = 0
-            
+
             # Submit all kits for processing
             for season in seasons:
                 kits = Kit.objects.filter(season=season)
@@ -113,14 +115,14 @@ class Command(BaseCommand):
                     kits = kits.filter(
                         last_updated__lt=timezone.now() - timedelta(days=7)
                     )
-                
+
                 # Order by oldest kits first (those that haven't been updated the longest)
                 kits = kits.order_by('last_updated')
-                
+
                 self.stdout.write(
                     f"Found {kits.count()} kits to update for season {season}"
                 )
-                
+
                 for kit in kits:
                     future = executor.submit(update_kit, kit)
                     futures_to_kits[future] = kit
@@ -129,12 +131,12 @@ class Command(BaseCommand):
             for future in concurrent.futures.as_completed(futures_to_kits):
                 kit = futures_to_kits[future]
                 processed_count += 1
-                
+
                 # Update progress in title
                 progress = (processed_count / total_kits) * 100
                 title = f"FKApi - Update Last Season ({processed_count}/{total_kits} - {progress:.1f}%)"
                 os.system(f"title {title}")
-                
+
                 try:
                     success, message, error_type = future.result()
                     if success:
@@ -144,7 +146,7 @@ class Command(BaseCommand):
                         if error_type == "moved":
                             not_found_count += 1
                             self.stdout.write(self.style.WARNING(f"PAGE MOVED: {kit.slug} - checking for duplicates..."))
-                            
+
                             # Check for potential duplicates and remove this kit
                             self._handle_moved_kit(kit)
                         elif error_type == "network":
@@ -153,7 +155,7 @@ class Command(BaseCommand):
                         else:
                             error_count += 1
                             self.stdout.write(self.style.ERROR(message))
-                        
+
                         # Log errors
                         with open('update_last_season_errors.log', 'a', encoding='utf-8') as log:
                             log.write(f"{timezone.now()}: [{error_type.upper()}] {message}\n")
@@ -173,24 +175,24 @@ class Command(BaseCommand):
         self.stdout.write(f"Network errors: {network_error_count} kits")
         self.stdout.write(f"Other errors: {error_count} kits")
         self.stdout.write(f"Total processed: {processed_count} kits")
-        
+
         if error_count > 0 or not_found_count > 0 or network_error_count > 0:
             self.stdout.write(
                 self.style.WARNING("Check update_last_season_errors.log for details on failures")
             )
-            
+
         if network_error_count > 0:
             self.stdout.write(
                 self.style.WARNING("Network errors detected - consider running again later")
             )
-        
+
         # Reset title
         os.system("title FKApi - Update Last Season - COMPLETED")
-    
+
     def _handle_moved_kit(self, kit: Kit) -> None:
         """
         Handles a kit that was moved (404 error) by checking for duplicates and removing it.
-        
+
         Args:
             kit (Kit): The kit that was not found (page moved)
         """
@@ -201,18 +203,18 @@ class Command(BaseCommand):
                 season=kit.season,
                 type=kit.type
             ).exclude(id=kit.id)
-            
+
             if potential_duplicates.exists():
                 self.stdout.write(
                     self.style.WARNING(f"Found {potential_duplicates.count()} potential duplicates for {kit.slug}")
                 )
-                
+
                 # Log the moved kit and its potential duplicates
                 with open('moved_kits.log', 'a', encoding='utf-8') as log:
                     log.write(f"{timezone.now()}: MOVED KIT: {kit.slug}\n")
                     for duplicate in potential_duplicates:
                         log.write(f"  Potential duplicate: {duplicate.slug}\n")
-                
+
                 # Remove the moved kit since we likely have the updated version
                 kit_name = kit.name
                 kit.delete()
@@ -226,7 +228,7 @@ class Command(BaseCommand):
                 # Log moved kit without duplicates for manual review
                 with open('moved_kits_no_duplicates.log', 'a', encoding='utf-8') as log:
                     log.write(f"{timezone.now()}: MOVED KIT (no duplicates): {kit.slug}\n")
-                    
+
         except Exception as e:
             self.stdout.write(
                 self.style.ERROR(f"Error handling moved kit {kit.slug}: {str(e)}")

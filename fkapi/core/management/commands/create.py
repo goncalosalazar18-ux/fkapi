@@ -1,15 +1,17 @@
+import json
+
 from bs4 import BeautifulSoup
 from django.core.management.base import BaseCommand
-from core.models import Type_K, Competition, Club, Brand
 from unidecode import unidecode
-import json
+
+from core.models import Brand, Club, Competition, Type_K
 
 
 class Command(BaseCommand):
     help = 'Creates instances of the models based on data.html'
 
     def handle(self, *args, **kwargs):
-        with open('data.html', 'r', encoding='utf-8') as file:
+        with open('data.html', encoding='utf-8') as file:
             data = file.read()
         soup = BeautifulSoup(data, 'html.parser')
 

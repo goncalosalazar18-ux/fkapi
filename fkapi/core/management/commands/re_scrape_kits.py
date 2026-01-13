@@ -1,7 +1,9 @@
+from concurrent.futures import ThreadPoolExecutor
+
 from django.core.management.base import BaseCommand
+
 from core.models import Kit
 from core.scrapers import scrape_kit
-from concurrent.futures import ThreadPoolExecutor
 
 
 class Command(BaseCommand):
@@ -9,7 +11,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         #kits = Kit.objects.all()
-        with open('kits_to_fix.txt', 'r', encoding='utf-8') as file:
+        with open('kits_to_fix.txt', encoding='utf-8') as file:
             kits = file.readlines()
         with ThreadPoolExecutor(max_workers=15) as executor:
             for kit in kits:
