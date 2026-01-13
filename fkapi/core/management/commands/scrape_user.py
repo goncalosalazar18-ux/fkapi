@@ -1,8 +1,8 @@
 from django.core.management.base import BaseCommand
-import requests
 from bs4 import BeautifulSoup
-from core.scrapers import scrape_kit, HTTP_DEFAULT_HEADERS, DEFAULT_TIMEOUT
+from core.scrapers import scrape_kit
 from core.models import Kit
+from core.http import http_get
 import time
 
 
@@ -15,10 +15,8 @@ class Command(BaseCommand):
         username = options['username']
         # keep scraping pages until no more pages
         for page in range(1, 100):
-            response = requests.get(
+            response = http_get(
                 f"https://www.footballkitarchive.com/user/{username}?p={page}",
-                headers=HTTP_DEFAULT_HEADERS,
-                timeout=DEFAULT_TIMEOUT
             )
             print(f"Scraping page {page}")
             if response.status_code == 200:
