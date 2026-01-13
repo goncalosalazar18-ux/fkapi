@@ -44,7 +44,45 @@ _api_auth = APIKeyAuth() if os.getenv("DJANGO_API_ENABLE_AUTH", "False").lower()
 
 api = NinjaAPI(
     title="Football Kit Archive API",
-    description="API for managing and retrieving football kit information",
+    description="""
+    API for managing and retrieving football kit information.
+
+    ## Authentication
+    API key authentication is optional and can be enabled by setting `DJANGO_API_ENABLE_AUTH=True`.
+    When enabled, include your API key in the request header:
+    ```
+    X-API-Key: your-api-key-here
+    ```
+
+    ## Rate Limiting
+    The API is rate-limited to 100 requests per hour per IP address by default.
+    Rate limit can be configured via `API_RATE_LIMIT_RATE` environment variable.
+    When rate limit is exceeded, you will receive a 403 Forbidden response.
+
+    ## Pagination
+    Endpoints that return lists support pagination via query parameters:
+    - `page`: Page number (default: 1)
+    - `page_size`: Number of items per page (default: 20, max: 100)
+
+    ## Error Responses
+    The API uses standard HTTP status codes:
+    - `200 OK`: Successful request
+    - `400 Bad Request`: Invalid request parameters
+    - `401 Unauthorized`: Missing or invalid API key (if authentication enabled)
+    - `403 Forbidden`: Rate limit exceeded
+    - `404 Not Found`: Resource not found
+    - `500 Internal Server Error`: Server error
+
+    Error responses follow this format:
+    ```json
+    {
+        "detail": "Error message description"
+    }
+    ```
+
+    ## Base URL
+    All endpoints are prefixed with `/api/`
+    """,
     version="1.0.0",
     auth=_api_auth,
     csrf=False,  # Disable CSRF for API endpoints
@@ -55,6 +93,34 @@ api = NinjaAPI(
 @api.exception_handler(Exception)
 def custom_exception_handler(request, exc):
     return api.create_response(request, {"detail": str(exc)}, status=500)
+
+
+@api.get("/health", summary="Health Check", tags=["System"], description="""
+    Check if the API and database are functioning correctly.
+
+    **Response:**
+    - `200 OK`: API and database are healthy
+    - `503 Service Unavailable`: Database connection failed
+
+    **Example Response:**
+    ```json
+    {
+        "status": "healthy",
+        "timestamp": "2026-01-13T12:00:00Z"
+    }
+    ```
+    """)
+def health_check(request):
+    """
+    Check if the API and database are functioning correctly.
+    """
+    from datetime import datetime
+    try:
+        # Simple database check
+        Club.objects.count()
+        return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+    except Exception as e:
+        return api.create_response(request, {"status": "unhealthy", "error": str(e)}, status=503)
 
 
 @contextmanager
@@ -701,8 +767,53 @@ def test_search(request):
     )
 
 
-@api.get("/random-kits/")
-def get_random_kits(request, page: int = 1, page_size: int = 20):
+@api.get(
+    "/random-kits/",
+    summary="Get Random Kits",
+    description="""
+    Retrieve a paginated list of random kits.
+
+    **Pagination Parameters:**
+    - `page` (int, default: 1): Page number
+    - `page_size` (int, default: 20, max: 100): Number of items per page
+
+    **Response Format:**
+    ```json
+    {
+        "kits": [
+            {
+                "id": 1,
+                "name": "Manchester United 2024-25 Home Kit",
+                "slug": "manchester-united-2024-25-home-kit",
+                "main_img_url": "https://...",
+                "team_name": "Manchester United",
+                "season_year": "2024-25",
+                "type_name": "Home",
+                "brand_name": "Adidas",
+                "rating": 8.5,
+                "colors": "Red / White",
+                "design": "Classic design"
+            }
+        ],
+        "pagination": {
+            "current_page": 1,
+            "total_pages": 50,
+            "total_count": 1000,
+            "has_next": true,
+            "has_previous": false,
+            "next_page": 2,
+            "previous_page": null
+        }
+    }
+    ```
+
+    **Example Usage:**
+    - Get first page: `/api/random-kits/?page=1&page_size=20`
+    - Get second page: `/api/random-kits/?page=2&page_size=20`
+    """,
+    tags=["Kits"],
+)
+def get_random_kits(request, page: int = Query(1, description="Page number", ge=1), page_size: int = Query(20, description="Items per page", ge=1, le=100)):
     """
     Get random kits with pagination.
     """
@@ -750,8 +861,48 @@ def get_random_kits(request, page: int = 1, page_size: int = 20):
     }
 
 
-@api.get("/random-clubs/")
-def get_random_clubs(request, page: int = 1, page_size: int = 20):
+@api.get(
+    "/random-clubs/",
+    summary="Get Random Clubs",
+    description="""
+    Retrieve a paginated list of random clubs.
+
+    **Pagination Parameters:**
+    - `page` (int, default: 1): Page number
+    - `page_size` (int, default: 20, max: 100): Number of items per page
+
+    **Response Format:**
+    ```json
+    {
+        "clubs": [
+            {
+                "id": 1,
+                "name": "Manchester United",
+                "slug": "manchester-united-kits",
+                "logo": "https://...",
+                "country": "GB",
+                "kit_count": 150
+            }
+        ],
+        "pagination": {
+            "current_page": 1,
+            "total_pages": 25,
+            "total_count": 500,
+            "has_next": true,
+            "has_previous": false,
+            "next_page": 2,
+            "previous_page": null
+        }
+    }
+    ```
+
+    **Example Usage:**
+    - Get first page: `/api/random-clubs/?page=1&page_size=20`
+    - Get second page: `/api/random-clubs/?page=2&page_size=20`
+    """,
+    tags=["Clubs"],
+)
+def get_random_clubs(request, page: int = Query(1, description="Page number", ge=1), page_size: int = Query(20, description="Items per page", ge=1, le=100)):
     """
     Get random clubs with pagination.
     """
