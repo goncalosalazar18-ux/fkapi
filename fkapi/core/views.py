@@ -792,26 +792,14 @@ def load_more_clubs(request):
     """
     AJAX endpoint to load more clubs.
     """
-    page = request.GET.get('page', 1)
-    page_size = request.GET.get('page_size', 20)
     try:
-        # Make request to our API
-        response = requests.get(
-            f'http://localhost:8787/api/random-clubs/?page={page}&page_size={page_size}',
-            timeout=15
-        )
-        if response.status_code == 200:
-            return JsonResponse(response.json())
-        else:
-            # Add more logging for debugging
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"Failed to load clubs -- status: {response.status_code}, response: {response.text}")
-            return JsonResponse({'error': 'Failed to load clubs', 'status_code': response.status_code, 'response': response.text}, status=500)
+        page = int(request.GET.get('page', 1))
+        page_size = int(request.GET.get('page_size', 20))
+        
+        # Call API function directly instead of HTTP request
+        result = get_random_clubs(request, page=page, page_size=page_size)
+        return JsonResponse(result)
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Exception when loading clubs: {e}")
         return JsonResponse({'error': str(e)}, status=500)
 
 
