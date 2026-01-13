@@ -88,6 +88,42 @@ def get_season(season_slug: str, season_display: str = None) -> Season:
     try:
         import re
 
+        # Check if the input is a 2-digit year format (e.g., '24-25', '23-24')
+        two_digit_year_match = re.match(r'^(\d{2})(?:-(\d{2}))?$', season_slug)
+        if two_digit_year_match and len(season_slug) <= 7:
+            first_year_short = two_digit_year_match.group(1)
+            second_year_short = two_digit_year_match.group(2)
+
+            # Assume 2000s for 2-digit years (24 -> 2024)
+            current_century = "20"
+            first_year = current_century + first_year_short
+
+            if second_year_short:
+                # Determine century for second year
+                first_year_int = int(first_year)
+                second_year_int = int(current_century + second_year_short)
+
+                if second_year_int < first_year_int:
+                    # Crossed century boundary
+                    century = str(int(current_century) + 1)
+                else:
+                    century = current_century
+
+                second_year = century + second_year_short
+                year_str = f"{first_year}-{second_year_short}"
+            else:
+                second_year = None
+                year_str = first_year
+
+            try:
+                return Season.objects.get(year=year_str)
+            except Season.DoesNotExist:
+                return Season.objects.create(
+                    year=year_str,
+                    first_year=first_year,
+                    second_year=second_year
+                )
+
         # Check if the input is a direct year format (e.g., '2024', '2023-24', '1999-00', '2023-2024')
         direct_year_match = re.match(r'^(\d{4})(?:-(\d{2}|\d{4}))?$', season_slug)
 
@@ -239,13 +275,13 @@ def scrape_kit(slug: str, kit_id: str = None, use_proxy: bool = False) -> Kit | 
 
             # Check for actual page not found messages (not network 404s)
             # Look for specific "The requested page could not be found" message
-            page_not_found_text = soup.find(text=lambda text: text and "The requested page could not be found" in text)
+            page_not_found_text = soup.find(string=lambda text: text and "The requested page could not be found" in text)
             if page_not_found_text:
                 logger.warning(f"Page moved: Kit {slug} - 'The requested page could not be found'")
                 return None
 
             # Check for 404 Not Found in h1 tag (actual page not found)
-            if soup.find("h1", text="404 Not Found"):
+            if soup.find("h1", string="404 Not Found"):
                 logger.warning(f"404 Not Found: Kit {slug} does not exist")
                 return None
 
@@ -330,7 +366,7 @@ def scrape_kit(slug: str, kit_id: str = None, use_proxy: bool = False) -> Kit | 
                 ).first()
 
                 if existing_kit:
-                    # Kit already exists, but check if slug or kit_id needs updating
+                    # Kit already exists, but check if slug, kit_id, or design needs updating
                     needs_update = False
                     if existing_kit.slug != clean_slug:
                         logger.debug(f"Updating slug: {existing_kit.slug} -> {clean_slug}")
@@ -343,6 +379,11 @@ def scrape_kit(slug: str, kit_id: str = None, use_proxy: bool = False) -> Kit | 
                     if existing_kit.kit_id != kit_id:
                         logger.debug(f"Updating kit_id: {existing_kit.kit_id} -> {kit_id}")
                         existing_kit.kit_id = kit_id
+                        needs_update = True
+
+                    if existing_kit.design != data.design:
+                        logger.debug(f"Updating design: {existing_kit.design} -> {data.design}")
+                        existing_kit.design = data.design
                         needs_update = True
 
                     if needs_update:

@@ -25096,3 +25096,6 @@ junior-stars-fc-2022-23-away-kit - Brand information not found
 cd-universitario-2024-home-kit - Brand information not found
 grenades-fc-2023-24-home-kit - Brand information not found
 grenades-fc-2023-24-away-kit - Brand information not found
+test-kit - Network error: 404 Client Error: Not Found for url: https://www.footballkitarchive.com/test-kit/
+test-kit - Network error: 404 Client Error: Not Found for url: https://www.footballkitarchive.com/test-kit/
+test-kit - Network error: 404 Client Error: Not Found for url: https://www.footballkitarchive.com/test-kit/
