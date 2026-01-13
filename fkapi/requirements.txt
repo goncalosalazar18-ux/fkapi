@@ -21,6 +21,7 @@ cron-descriptor==1.4.3
 Django==5.0.4
 django-celery-beat==2.6.0
 django-colorfield==0.11.0
+django-countries==7.6.1
 django-jazzmin==3.0.0
 django-ninja==1.1.0
 django-timezone-field==6.1.0
@@ -35,6 +36,7 @@ llvmlite==0.42.0
 mpmath==1.3.0
 networkx==3.3
 numba==0.59.1
+ninja-api-key==1.0.2
 onnxruntime==1.17.3
 packaging==24.0
 pillow==10.3.0
@@ -59,6 +61,7 @@ referencing==0.35.0
 requests==2.31.0
 requests-toolbelt==1.0.0
 rpds-py==0.18.0
+ruff
 six==1.16.0
 soupsieve==2.5
 sqlparse==0.5.0

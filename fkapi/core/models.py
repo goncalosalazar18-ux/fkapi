@@ -1,6 +1,9 @@
 from django.db import models
 from colorfield.fields import ColorField
 from django.core.validators import RegexValidator
+from django.conf import settings
+import base64
+from django_countries.fields import CountryField
 
 
 
@@ -41,6 +44,7 @@ class Competition(models.Model):
     slug = models.SlugField(unique=True,max_length=150)
     logo = models.URLField(null=True,blank=True)
     logo_dark = models.URLField(null=True,blank=True)
+    country = CountryField(blank=True, null=True)
     
     def __str__(self):
         return self.name
@@ -58,6 +62,7 @@ class Club(models.Model):
     ])
     logo = models.URLField(null=True,blank=True)
     logo_dark = models.URLField(null=True,blank=True)
+    country = CountryField(blank=True, null=True)
     
     def __str__(self):
         return self.name
@@ -81,6 +86,7 @@ class Kit(models.Model):
             code='invalid_slug'
         )
     ])
+    kit_id = models.CharField(max_length=20, null=True, blank=True, help_text="ID from FootballKitArchive for URL construction")
     team = models.ForeignKey(Club, on_delete=models.CASCADE)
     season = models.ForeignKey(Season, on_delete=models.CASCADE)
     competition = models.ManyToManyField(Competition)
@@ -91,8 +97,9 @@ class Kit(models.Model):
     fh_link = models.URLField(null=True,blank=True)
     web_updated = models.DateTimeField(null=True,blank=True)
     last_updated = models.DateTimeField(auto_now=True)
-    primary_color = models.ForeignKey(Variation, on_delete=models.SET_NULL,related_name='primary_color', null=True,blank=True)
-    secondary_color = models.ForeignKey(Variation, on_delete=models.SET_NULL,related_name='secondary_color', null=True,blank=True)
+    primary_color = models.ForeignKey(Color, on_delete=models.SET_NULL,related_name='primary_color', null=True,blank=True)
+    secondary_color = models.ManyToManyField(Color, related_name='secondary_color', blank=True)
+    design = models.CharField(max_length=100, null=True, blank=True)
 
     def __str__(self):
         return self.name

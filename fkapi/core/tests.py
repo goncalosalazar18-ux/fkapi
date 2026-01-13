@@ -1,7 +1,7 @@
 from django.test import TestCase
 from django.db import transaction
-from .models import Season, Kit, Club, Brand, Type_K, Competition
-from .scrapers import get_current_season, get_season, scrape_kit, get_season_e, scrape_competition, scrape_brand, scrape_whole_club, _get_or_create_brand, _process_kit, scrape_kit_lite, scrape_lastest, scrape_latest_pages, scrape_club_details
+from .models import Season, Kit, Club, Brand, Type_K, Competition, Color
+from .scrapers import get_current_season, get_season, scrape_kit, get_season_e, scrape_competition, scrape_brand, scrape_whole_club, _get_or_create_brand, _process_kit, scrape_kit_lite, scrape_lastest, scrape_latest_pages, scrape_club_details, _process_colors
 from django.core.exceptions import ObjectDoesNotExist
 from unittest.mock import patch, Mock
 import requests
@@ -98,6 +98,14 @@ class ScraperTests(TestCase):
                                         <td>Third</td>
                                     </tr>
                                     <tr>
+                                        <td>Design</td>
+                                        <td>Striped</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Colors</td>
+                                        <td>Blue / White</td>
+                                    </tr>
+                                    <tr>
                                         <td>Brand</td>
                                         <td><a href="/adidas-kits/">adidas</a></td>
                                     </tr>
@@ -132,6 +140,11 @@ class ScraperTests(TestCase):
                 self.assertEqual(kit.season.year, case["expected"]["year"])
                 self.assertEqual(kit.season.first_year, case["expected"]["first_year"])
                 self.assertEqual(kit.season.second_year, case["expected"]["second_year"])
+                
+                # Verify design and colors
+                self.assertEqual(kit.design, "Striped")
+                self.assertEqual(kit.primary_color.name, "Blue")
+                self.assertEqual(kit.secondary_color.first().name, "White")
 
     @patch('core.scrapers.requests.get')
     def test_scrape_kit_errors(self, mock_get):
@@ -799,6 +812,14 @@ class ScraperTests(TestCase):
                                 <td>Third</td>
                             </tr>
                             <tr>
+                                <td>Design</td>
+                                <td>Striped</td>
+                            </tr>
+                            <tr>
+                                <td>Colors</td>
+                                <td>Blue / White</td>
+                            </tr>
+                            <tr>
                                 <td>Brand</td>
                                 <td><a href="/adidas-kits/">adidas</a></td>
                             </tr>
@@ -822,7 +843,9 @@ class ScraperTests(TestCase):
                 """,
                 "expected": {
                     "rating": 4.5,
-                    "has_image": True
+                    "has_image": True,
+                    "design": "Striped",
+                    "colors": "Blue / White"
                 }
             },
             {
@@ -986,6 +1009,14 @@ class ScraperTests(TestCase):
                                     <tr>
                                         <td>Type</td>
                                         <td>Home</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Design</td>
+                                        <td>Striped</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Colors</td>
+                                        <td>Red / White</td>
                                     </tr>
                                     <tr>
                                         <td>Brand</td>
@@ -1208,3 +1239,134 @@ class ScraperTests(TestCase):
         # Test invalid page range
         with self.assertRaises(ValueError):
             scrape_latest_pages(page_start=2, page_end=1)
+
+    def test_process_colors(self):
+        """Test the _process_colors function."""
+        # Create test colors
+        white = Color.objects.create(name="White", color="#FFFFFF")
+        blue = Color.objects.create(name="Blue", color="#0000FF")
+        red = Color.objects.create(name="Red", color="#FF0000")
+        green = Color.objects.create(name="Green", color="#008000")
+        
+        # Create a test kit
+        kit = Kit.objects.create(
+            name="Test Kit",
+            slug="test-kit",
+            team=self.club,
+            season=self.current_season,
+            type=self.type_k,
+            brand=self.brand,
+            main_img_url="https://example.com/image.jpg",
+            rating=4.5
+        )
+        
+        # Test single color
+        _process_colors(kit, "Blue")
+        kit.refresh_from_db()
+        self.assertEqual(kit.primary_color, blue)
+        self.assertEqual(kit.secondary_color.count(), 0)
+        
+        # Test with one secondary color
+        _process_colors(kit, "Red / White")
+        kit.refresh_from_db()
+        self.assertEqual(kit.primary_color, red)
+        self.assertIn(white, kit.secondary_color.all())
+        
+        # Test with two secondary colors
+        _process_colors(kit, "White / Blue / Red")
+        kit.refresh_from_db()
+        self.assertEqual(kit.primary_color, white)
+        self.assertIn(blue, kit.secondary_color.all())
+        self.assertIn(red, kit.secondary_color.all())
+        
+        # Test with three secondary colors
+        _process_colors(kit, "Green / Blue / Red / White")
+        kit.refresh_from_db()
+        self.assertEqual(kit.primary_color, green)
+        self.assertIn(blue, kit.secondary_color.all())
+        self.assertIn(red, kit.secondary_color.all())
+        self.assertIn(white, kit.secondary_color.all())
+        self.assertEqual(kit.secondary_color.count(), 3)
+
+    def test_design_extraction(self):
+        """Test that the design field is correctly extracted and saved."""
+        with patch('core.scrapers.requests.get') as mock_get:
+            mock_response = Mock()
+            mock_response.status_code = 200
+            mock_response.text = """
+                <div class="top-container">
+                    <div class="top-container-col top-container-col-image">
+                        <div class="top-container-img-container">
+                            <a href="https://cdn.footballkitarchive.com/2024/12/28/WoFwCr2Yv42ZmE6.jpg">
+                                <img class="top-image" data-src="https://cdn.footballkitarchive.com/2024/12/28/WoFwCr2Yv42ZmE6.jpg"/>
+                            </a>
+                        </div>
+                    </div>
+                    <div class="top-container-col">
+                        <table class="fact-table">
+                            <tbody>
+                                <tr>
+                                    <td>Team</td>
+                                    <td><a href="/fc-copenhagen-kits/">FC Copenhagen</a></td>
+                                </tr>
+                                <tr>
+                                    <td>Season</td>
+                                    <td>2024-25</td>
+                                </tr>
+                                <tr>
+                                    <td>Type</td>
+                                    <td>Third</td>
+                                </tr>
+                                <tr>
+                                    <td>Design</td>
+                                    <td>Hoops</td>
+                                </tr>
+                                <tr>
+                                    <td>Colors</td>
+                                    <td>Blue / White</td>
+                                </tr>
+                                <tr>
+                                    <td>Brand</td>
+                                    <td><a href="/adidas-kits/">adidas</a></td>
+                                </tr>
+                                <tr>
+                                    <td>League</td>
+                                    <td>
+                                        <a href="/danish-superliga-kits/">Danish Superliga</a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>Rating</td>
+                                    <td>
+                                        <div class="rating-container">
+                                            <div class="rating-details">
+                                                <span id="rating">4.42</span>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            """
+            mock_get.return_value = mock_response
+
+            # Create test colors
+            Color.objects.create(name="Blue", color="#0000FF")
+            Color.objects.create(name="White", color="#FFFFFF")
+            
+            # Create test club
+            club = Club.objects.get_or_create(
+                name="FC Copenhagen",
+                slug="fc-copenhagen-kits"
+            )[0]
+            
+            kit = scrape_kit("fc-copenhagen-2024-25-third-kit")
+            
+            # Verify design field
+            self.assertEqual(kit.design, "Hoops")
+            
+            # Verify colors
+            self.assertEqual(kit.primary_color.name, "Blue")
+            self.assertEqual(kit.secondary_color.first().name, "White")
