@@ -59,10 +59,12 @@ INSTALLED_APPS = [
     'django.contrib.postgres',
     #'django.contrib.sites',
     'ninja',
+    'ninja_apikey',
     'core',
     'colorfield',
     'celery',
     'django_celery_beat',
+    'django_countries',
 ]
 
 MIDDLEWARE = [
