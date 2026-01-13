@@ -23,12 +23,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-(zoq@ffsbz8dd9v-6vxgz-hm3%d9bmavt72x!cje751_edmf-+'
+# Read from environment with a safe development default
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'insecure-dev-key')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() in ('1', 'true', 'yes')
 
-ALLOWED_HOSTS = []
+# Load allowed hosts from env (comma-separated). Fall back to localhost and optional PROJECT_IP.
+_allowed_hosts_env = os.getenv('DJANGO_ALLOWED_HOSTS')
+if _allowed_hosts_env:
+    ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts_env.split(',') if h.strip()]
+else:
+    default_ip = os.environ.get('PROJECT_IP')
+    ALLOWED_HOSTS = ['127.0.0.1', 'localhost'] + ([default_ip] if default_ip else [])
 
 CELERY_BROKER_URL = 'redis://localhost:6379'
 CELERY_RESULT_BACKEND = 'redis://localhost:6379'
@@ -106,10 +113,10 @@ load_dotenv()
 import logging
 
 logger = logging.getLogger(__name__)
-logger.info("Host: %s", os.getenv('POSTGRES_HOST'))
-logger.info("DB: %s", os.getenv('POSTGRES_DB'))
-logger.info("User: %s", os.getenv('POSTGRES_USER'))
-logger.info("Password: %s", os.getenv('POSTGRES_PASSWORD'))
+logger.info("DB host: %s", os.getenv('POSTGRES_HOST'))
+logger.info("DB name: %s", os.getenv('POSTGRES_DB'))
+logger.info("DB user: %s", os.getenv('POSTGRES_USER'))
+# Do not log database passwords
 
 
 DATABASES = {
