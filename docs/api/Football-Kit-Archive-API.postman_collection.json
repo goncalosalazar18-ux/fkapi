@@ -1,0 +1,469 @@
+{
+	"info": {
+		"_postman_id": "fkapi-collection-2026",
+		"name": "Football Kit Archive API",
+		"description": "Complete API collection for Football Kit Archive API. Includes all endpoints for searching kits, clubs, brands, competitions, and seasons.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "System",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/health",
+							"host": ["{{base_url}}"],
+							"path": ["api", "health"]
+						},
+						"description": "Check if the API and database are functioning correctly."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Clubs",
+			"item": [
+				{
+					"name": "Search Clubs",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-API-Key",
+								"value": "{{api_key}}",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/clubs/search?keyword=manchester",
+							"host": ["{{base_url}}"],
+							"path": ["api", "clubs", "search"],
+							"query": [
+								{
+									"key": "keyword",
+									"value": "manchester",
+									"description": "Keyword to search for in club names and slugs"
+								}
+							]
+						},
+						"description": "Search for clubs using a keyword. The search is performed on both club names and slugs using trigram word similarity. Returns up to 10 results ordered by ID."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Club Seasons",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-API-Key",
+								"value": "{{api_key}}",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/clubs/seasons?id=1",
+							"host": ["{{base_url}}"],
+							"path": ["api", "clubs", "seasons"],
+							"query": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Club ID"
+								}
+							]
+						},
+						"description": "Get all seasons for a specific club."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Random Clubs",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-API-Key",
+								"value": "{{api_key}}",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/random-clubs/?page=1&page_size=20",
+							"host": ["{{base_url}}"],
+							"path": ["api", "random-clubs", ""],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number (default: 1)"
+								},
+								{
+									"key": "page_size",
+									"value": "20",
+									"description": "Items per page (default: 20, max: 100)"
+								}
+							]
+						},
+						"description": "Retrieve a paginated list of random clubs."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Kits",
+			"item": [
+				{
+					"name": "Get Club Kits by Season",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-API-Key",
+								"value": "{{api_key}}",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/kits?club=1&season=1",
+							"host": ["{{base_url}}"],
+							"path": ["api", "kits"],
+							"query": [
+								{
+									"key": "club",
+									"value": "1",
+									"description": "Club ID"
+								},
+								{
+									"key": "season",
+									"value": "1",
+									"description": "Season ID"
+								}
+							]
+						},
+						"description": "Retrieve all kits for a specific club in a specific season."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Complete Kit Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-API-Key",
+								"value": "{{api_key}}",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/kit-json/1",
+							"host": ["{{base_url}}"],
+							"path": ["api", "kit-json", "1"]
+						},
+						"description": "Retrieve comprehensive information about a specific kit."
+					},
+					"response": []
+				},
+				{
+					"name": "Search Kits by Name and Year",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-API-Key",
+								"value": "{{api_key}}",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/kits/search?keyword=manchester&year=2024",
+							"host": ["{{base_url}}"],
+							"path": ["api", "kits", "search"],
+							"query": [
+								{
+									"key": "keyword",
+									"value": "manchester",
+									"description": "Search keyword"
+								},
+								{
+									"key": "year",
+									"value": "2024",
+									"description": "Optional year filter",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Search for kits using a keyword and optionally a year."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Random Kits",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-API-Key",
+								"value": "{{api_key}}",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/random-kits/?page=1&page_size=20",
+							"host": ["{{base_url}}"],
+							"path": ["api", "random-kits", ""],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number (default: 1)"
+								},
+								{
+									"key": "page_size",
+									"value": "20",
+									"description": "Items per page (default: 20, max: 100)"
+								}
+							]
+						},
+						"description": "Retrieve a paginated list of random kits."
+					},
+					"response": []
+				},
+				{
+					"name": "Send Kit to External API",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-API-Key",
+								"value": "{{api_key}}",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/send-kit/1",
+							"host": ["{{base_url}}"],
+							"path": ["api", "send-kit", "1"]
+						},
+						"description": "Send kit information to an external API endpoint."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Brands",
+			"item": [
+				{
+					"name": "Search Brands",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-API-Key",
+								"value": "{{api_key}}",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/brands/search?keyword=adidas",
+							"host": ["{{base_url}}"],
+							"path": ["api", "brands", "search"],
+							"query": [
+								{
+									"key": "keyword",
+									"value": "adidas",
+									"description": "Keyword to search for in brand names or slugs"
+								}
+							]
+						},
+						"description": "Search for brands by name or slug using trigram similarity. Returns up to 10 matched brands ordered by ID."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Competitions",
+			"item": [
+				{
+					"name": "Search Competitions",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-API-Key",
+								"value": "{{api_key}}",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/competitions/search?keyword=premier",
+							"host": ["{{base_url}}"],
+							"path": ["api", "competitions", "search"],
+							"query": [
+								{
+									"key": "keyword",
+									"value": "premier",
+									"description": "Keyword to search for in competition names or slugs"
+								}
+							]
+						},
+						"description": "Search for competitions by name or slug using trigram similarity. Returns up to 10 matched competitions ordered by ID."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Seasons",
+			"item": [
+				{
+					"name": "Search Seasons",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-API-Key",
+								"value": "{{api_key}}",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/seasons/search?keyword=2025",
+							"host": ["{{base_url}}"],
+							"path": ["api", "seasons", "search"],
+							"query": [
+								{
+									"key": "keyword",
+									"value": "2025",
+									"description": "Year or partial year to search for"
+								}
+							]
+						},
+						"description": "Search for seasons by year. Supports partial year matching. Returns up to 10 matching seasons sorted by year (descending)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Merge",
+			"item": [
+				{
+					"name": "Get Merge Suggestions",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-API-Key",
+								"value": "{{api_key}}",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/merge-suggestions/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "merge-suggestions", ""]
+						},
+						"description": "Get suggestions for merging duplicate clubs based on name similarity."
+					},
+					"response": []
+				},
+				{
+					"name": "Merge Clubs",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "X-API-Key",
+								"value": "{{api_key}}",
+								"type": "text",
+								"disabled": true
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"source_id\": 1,\n    \"target_id\": 2\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/merge-clubs/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "merge-clubs", ""]
+						},
+						"description": "Merge two clubs, moving all kits from source to target."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Testing",
+			"item": [
+				{
+					"name": "Test Search Functionality",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-API-Key",
+								"value": "{{api_key}}",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/test-search",
+							"host": ["{{base_url}}"],
+							"path": ["api", "test-search"]
+						},
+						"description": "Test endpoint to verify search functionality with specific examples."
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "api_key",
+			"value": "",
+			"type": "string",
+			"description": "Optional API key if authentication is enabled"
+		}
+	]
+}
