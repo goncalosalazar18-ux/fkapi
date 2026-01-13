@@ -525,7 +525,9 @@ def send_kit(request, kit_id: int = Path(..., description="Kit ID", example=1)):
             main_img_url=kit.main_img_url,
         )
 
-        response = requests.post("http://localhost:8888/api/kits/", json=formatted_kit.dict())
+        response = requests.post(
+            "http://localhost:8888/api/kits/", json=formatted_kit.dict(), timeout=15
+        )
         response.raise_for_status()
 
         return JsonResponse({"message": "Kit sent successfully", "response": response.json()})
