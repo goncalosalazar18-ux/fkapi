@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 
+import logging
 import os
 from pathlib import Path
 
@@ -113,7 +114,7 @@ WSGI_APPLICATION = 'fkapi.wsgi.application'
 
 load_dotenv()
 
-import logging
+
 
 logger = logging.getLogger(__name__)
 logger.info("DB host: %s", os.getenv('POSTGRES_HOST'))

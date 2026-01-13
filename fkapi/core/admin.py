@@ -1,7 +1,8 @@
 from django.contrib import admin
-from .models import Season, Type_K, Competition, Club, \
-    Brand, Kit, Color, Variation
 from django.utils.html import format_html
+
+from .models import Brand, Club, Color, Competition, Kit, Season, Type_K, Variation
+
 
 class ColorAdmin(admin.ModelAdmin):
     list_display = ('name', 'color_rectangle')
@@ -79,14 +80,14 @@ class KitAdmin(admin.ModelAdmin):
     def competitions(self, obj):
         return ", ".join([competition.name for competition in obj.competition.all()])
     competitions.short_description = 'Competitions'
-    
+
     def colors(self, obj):
         colors_display = []
         if obj.primary_color:
             colors_display.append(f'<span style="display:inline-block; width:15px; height:15px; background-color:{obj.primary_color.color}; border:1px solid #ccc;"></span> {obj.primary_color.name}')
-        
+
         secondary_colors = [f'<span style="display:inline-block; width:15px; height:15px; background-color:{c.color}; border:1px solid #ccc;"></span> {c.name}' for c in obj.secondary_color.all()]
-        
+
         if colors_display or secondary_colors:
             return format_html(', '.join(colors_display + secondary_colors))
         return '-'

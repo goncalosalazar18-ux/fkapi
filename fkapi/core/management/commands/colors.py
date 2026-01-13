@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
+
 from core.models import Color, Variation
-from colorfield.fields import ColorField
 
 # Definir tus propios colores
 custom_colors = {

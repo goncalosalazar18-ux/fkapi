@@ -1,9 +1,11 @@
-from django.core.management.base import BaseCommand
-from bs4 import BeautifulSoup
-from core.scrapers import scrape_kit
-from core.models import Kit
-from core.http import http_get
 import time
+
+from bs4 import BeautifulSoup
+from django.core.management.base import BaseCommand
+
+from core.http import http_get
+from core.models import Kit
+from core.scrapers import scrape_kit
 
 
 class Command(BaseCommand):

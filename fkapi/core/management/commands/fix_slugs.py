@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
-from core.models import Club, Competition
-from django.utils.text import slugify
+
+from core.models import Club
 
 
 class Command(BaseCommand):

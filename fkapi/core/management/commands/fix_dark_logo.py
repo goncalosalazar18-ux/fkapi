@@ -1,6 +1,9 @@
-from django.core.management.base import BaseCommand
-from core.models import Brand
 import time
+
+from django.core.management.base import BaseCommand
+
+from core.models import Brand
+
 
 class Command(BaseCommand):
     help = 'Fix dark logo'
@@ -15,6 +18,6 @@ class Command(BaseCommand):
             brand.logo=logo_dark.replace('_l','')
             brand.logo_dark=logo_dark
             brand.save()
-        
+
 
 

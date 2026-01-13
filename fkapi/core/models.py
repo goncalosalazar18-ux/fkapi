@@ -1,10 +1,8 @@
-from django.db import models
+
 from colorfield.fields import ColorField
 from django.core.validators import RegexValidator
-from django.conf import settings
-import base64
+from django.db import models
 from django_countries.fields import CountryField
-
 
 
 class Color(models.Model):
@@ -29,13 +27,13 @@ class Season(models.Model):
     year = models.CharField(max_length=9,unique=True)
     first_year = models.CharField(max_length=4)
     second_year = models.CharField(max_length=4,blank=True,null=True)
-    
+
     def __str__(self):
         return self.year
 
 class Type_K(models.Model):
     name = models.CharField(max_length=100)
-    
+
     def __str__(self):
         return self.name
 
@@ -45,7 +43,7 @@ class Competition(models.Model):
     logo = models.URLField(null=True,blank=True)
     logo_dark = models.URLField(null=True,blank=True)
     country = CountryField(blank=True, null=True)
-    
+
     def __str__(self):
         return self.name
 
@@ -63,7 +61,7 @@ class Club(models.Model):
     logo = models.URLField(null=True,blank=True)
     logo_dark = models.URLField(null=True,blank=True)
     country = CountryField(blank=True, null=True)
-    
+
     def __str__(self):
         return self.name
 
@@ -72,7 +70,7 @@ class Brand(models.Model):
     slug = models.SlugField(unique=True,max_length=150)
     logo = models.URLField(null=True,blank=True)
     logo_dark = models.URLField(null=True,blank=True)
-    
+
     def __str__(self):
         return self.name
 
@@ -90,7 +88,7 @@ class Kit(models.Model):
     team = models.ForeignKey(Club, on_delete=models.CASCADE)
     season = models.ForeignKey(Season, on_delete=models.CASCADE)
     competition = models.ManyToManyField(Competition)
-    type = models.ForeignKey(Type_K, on_delete=models.CASCADE)    
+    type = models.ForeignKey(Type_K, on_delete=models.CASCADE)
     brand = models.ForeignKey(Brand, on_delete=models.CASCADE)
     main_img_url = models.URLField()
     rating = models.DecimalField(max_digits=3, decimal_places=2)

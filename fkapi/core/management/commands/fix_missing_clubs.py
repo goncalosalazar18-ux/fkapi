@@ -1,14 +1,16 @@
-from django.core.management.base import BaseCommand
-from core.models import Club
-from core.scrapers import scrape_club_details
 from concurrent.futures import ThreadPoolExecutor
+
+from django.core.management.base import BaseCommand
+
+from core.scrapers import scrape_club_details
+
 
 class Command(BaseCommand):
     help = 'Fix missing clubs'
 
     def handle(self, *args, **options):
         missing_clubs=set()
-        with open('clubs_to_fix.txt', 'r', encoding='utf-8') as file:
+        with open('clubs_to_fix.txt', encoding='utf-8') as file:
             for line in file:
                 slug=line.strip()
                 missing_clubs.add(slug)
@@ -19,5 +21,5 @@ class Command(BaseCommand):
             except Exception as e:
                 print(f"Error: {e}")
         open('clubs_to_fix.txt', 'w').close()  # Remove all content from the file after processing
-            
+
 
