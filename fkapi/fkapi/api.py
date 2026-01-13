@@ -553,7 +553,7 @@ def send_kit(
         )
 
         response = requests.post(
-            "http://localhost:8888/api/kits/", json=formatted_kit.dict()
+            "http://localhost:8888/api/kits/", json=formatted_kit.dict(), timeout=15
         )
         response.raise_for_status()
 
