@@ -1,5 +1,5 @@
 from ninja import Schema
-from typing import List
+from typing import List, Optional
 
 class ClubSerializer(Schema):
     id: int
@@ -26,27 +26,42 @@ class SeasonSerializer(Schema):
 
 
 class ClubJsonSchema(Schema):
+    id: Optional[int] = None
+    id_fka: Optional[int] = None
     name: str
     slug: str
-    logo: str
+    logo: Optional[str] = None
+    logo_dark: Optional[str] = None
+    country: Optional[str] = None
 
 class SeasonJsonSchema(Schema):
+    id: Optional[int] = None
     year: str
     first_year: str
-    second_year: str | None
+    second_year: Optional[str] = None
 
 class CompetitionJsonSchema(Schema):
+    id: Optional[int] = None
     name: str
     slug: str
-    logo: str
+    logo: Optional[str] = None
+    logo_dark: Optional[str] = None
+    country: Optional[str] = None
+
 
 class TypeJsonSchema(Schema):
     name: str
 
 class BrandJsonSchema(Schema):
+    id: Optional[int] = None
     name: str
     slug: str
-    logo: str
+    logo: Optional[str] = None
+    logo_dark: Optional[str] = None
+
+class ColorJsonSchema(Schema):
+    name: str
+    color: str
 
 class KitJsonSchema(Schema):
     name: str
@@ -56,4 +71,7 @@ class KitJsonSchema(Schema):
     competition: List[CompetitionJsonSchema]
     type: TypeJsonSchema
     brand: BrandJsonSchema
+    design: Optional[str] = None
+    primary_color: Optional[ColorJsonSchema] = None
+    secondary_color: Optional[List[ColorJsonSchema]] = None
     main_img_url: str

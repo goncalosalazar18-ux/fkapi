@@ -9,7 +9,8 @@
         "request": "launch",
         "program": "${workspaceFolder}\\fkapi\\manage.py",
         "args": [
-            "scrape_latest",
+            "test",
+            "core.tests.ScraperTests.test_process_kit"
         ],
         "django": true,
         "justMyCode": true
