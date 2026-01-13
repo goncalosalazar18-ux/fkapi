@@ -14,7 +14,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from core.http import http_get
-from core.parsers import extract_fact_table
+from core.parsers import extract_fact_table, parse_kit_page
 
 # Local imports
 from .models import Brand, Club, Color, Competition, Kit, Season, Type_K
@@ -285,143 +285,38 @@ def scrape_kit(slug: str, kit_id: str = None, use_proxy: bool = False) -> Kit | 
                         logger.warning(f"No new URL format available for {slug}. Page likely moved.")
                         return None
 
-            # Extract data from fact table using helper
-            logger.debug("Extracting fact table...")
+            # Parse the page using our helper
             try:
-                fact_table = extract_fact_table(soup)
-            except ValueError as e:
-                logger.error(f"No fact table found in HTML: {e}")
-                logger.debug(f"First 500 chars of HTML content: {soup.prettify()[:500]}")
+                data = parse_kit_page(soup)
+            except ValueError as exc:
+                logger.error(f"Error parsing kit page: {exc}")
                 raise
 
-            # Get team information
-            logger.debug("Looking for team data...")
-            team_cell = fact_table.get_value_cell("team")
-            if not team_cell:
-                logger.error("Team data not found")
-                raise ValueError("Team data not found")
-
-            team_name = team_cell.get_text(strip=True)
-            team_link = team_cell.find("a")
-            if not team_link or not team_link.get("href"):
-                logger.error("Team link not found")
-                raise ValueError("Team link not found")
-
-            team_slug = team_link["href"].replace("/", "")
-
-            logger.debug(f"Processing kit for team: {team_name} (slug: {team_slug})")
-
             # Get or create team (handles name and slug changes)
-            logger.debug(f"Attempting to get team from database: {team_slug}")
-            team = _handle_club_changes(team_slug, team_name, use_proxy)
+            logger.debug(f"Processing kit for team: {data.team_name} (slug: {data.team_slug})")
+            team = _handle_club_changes(data.team_slug, data.team_name, use_proxy)
 
-            # Get season using the kit's slug
+            # Get or create brand
+            brand = _get_or_create_brand(data.brand_slug)
+
+            # Get season
             logger.debug("Getting season information...")
             try:
-                # First, try to get the season from the HTML
-                season_text = fact_table.get_text("season")
-                if season_text:
-                    logger.debug(f"Season text from HTML: {season_text}")
-                    try:
-                        # Clean season text - remove (Carry-over) and other parenthetical content
-                        import re
-                        season_text_clean = re.sub(r'\s*\([^)]*\)', '', season_text).strip()
-                        logger.debug(f"Cleaned season text: {season_text_clean}")
-
-                        # Check if it's a short year format (e.g., "11-12")
-                        short_year_match = re.match(r'^(\d{2})-(\d{2})$', season_text_clean)
-                        if short_year_match:
-                            # Get the full year from the slug first
-                            year_match = re.search(r'-(\d{4})(?:-(\d{2}))?-', slug + '-')
-                            if year_match:
-                                first_year = year_match.group(1)
-                                season_text_clean = f"{first_year}-{short_year_match.group(2)}"
-                                logger.debug(f"Using year from slug: {season_text_clean}")
-
-                        # Try to get or create the season using the cleaned text from HTML
-                        season = get_season(season_text_clean)
-                    except ValueError as e:
-                        logger.warning(f"Error getting season from HTML text: {str(e)}")
-                        # Fallback to using the slug
-                        season = get_season(slug)
-                else:
-                    # Fallback to using the slug if no season row found
-                    logger.warning("No season row found in HTML, using slug")
-                    season = get_season(slug)
-
+                season_text = data.season_text or slug
+                season = get_season(season_text)
                 logger.debug(f"Created/retrieved season: {season}")
             except ValueError as e:
                 logger.error(f"Error getting season: {str(e)}")
                 return None
 
             # Get kit type
-            logger.debug("Getting kit type...")
-            type_k_str = fact_table.get_text("kit type") or fact_table.get_text("type")
-            if not type_k_str:
-                raise ValueError("Kit type not found")
-            type_k, _ = Type_K.objects.get_or_create(name=type_k_str)
+            type_k, _ = Type_K.objects.get_or_create(name=data.kit_type)
             logger.debug(f"Kit type: {type_k}")
-
-            # Get design (if available)
-            design = fact_table.get_text("design")
-            if design:
-                logger.debug(f"Kit design: {design}")
-
-            # Get colors (if available)
-            colors_data = fact_table.get_text("colors")
-            if colors_data:
-                logger.debug(f"Kit colors: {colors_data}")
-
-            # Get brand
-            logger.debug("Getting brand information...")
-            brand_cell = fact_table.get_value_cell("brand")
-            if not brand_cell:
-                raise ValueError("Brand information not found")
-
-            brand_name = brand_cell.get_text(strip=True)
-            brand_link = brand_cell.find("a")
-            if not brand_link or not brand_link.get("href"):
-                raise ValueError("Brand link not found")
-            brand_slug = slugify(brand_link["href"])
-            try:
-                brand = Brand.objects.get(slug=brand_slug)
-                logger.debug(f"Found existing brand: {brand}")
-            except Brand.DoesNotExist:
-                logger.warning(f"Creating new brand: {brand_slug}")
-                brand, _ = Brand.objects.get_or_create(
-                    name=brand_name,
-                    slug=brand_slug
-                )
-
-            # Get rating
-            logger.debug("Getting rating...")
-            rating_span = soup.find("span", id="rating")
-            rating_details = soup.find("span", id="rating-details-no")
-            if rating_span and rating_span.text.strip() and not rating_details:
-                rating = float(rating_span.text.strip())
-            else:
-                rating = 0.0
-            logger.debug(f"Found rating: {rating}")
-
-            # Get main image
-            logger.debug("Getting main image...")
-            main_img = soup.find("img", class_="top-image")
-            if not main_img:
-                logger.error("Main image element not found")
-                raise ValueError("Main image not found")
-
-            main_img_url = main_img.get("data-src") or main_img.get("src")
-            if not main_img_url:
-                logger.error("Main image URL not found")
-                logger.debug(f"Image element content: {main_img.prettify()}")
-                raise ValueError("Main image URL not found")
-
-            logger.debug(f"Found main image URL: {main_img_url}")
 
             # Create or update kit
             logger.debug("Creating/updating kit in database...")
             with transaction.atomic():
-                kit_name = f"{team_name} {season} {type_k}"
+                kit_name = f"{data.team_name} {season} {type_k}"
                 logger.debug(f"Kit name: {kit_name}")
 
                 # Clean slug for database storage
@@ -466,26 +361,20 @@ def scrape_kit(slug: str, kit_id: str = None, use_proxy: bool = False) -> Kit | 
                             'season': season,
                             'type': type_k,
                             'brand': brand,
-                            'rating': rating,
-                            'main_img_url': main_img_url,
-                            'design': design,
+                            'rating': data.rating,
+                            'main_img_url': data.main_img_url,
+                            'design': data.design,
                             'kit_id': kit_id
                         }
                     )
 
                 # Process competitions
                 logger.debug("Processing competitions...")
-                comp_cell = fact_table.get_value_cell("league")
-                if not comp_cell:
-                    raise ValueError("Competitions information not found")
-
-                # Pass the HTML content of the competitions cell to _process_competitions
-                competitions_html = str(comp_cell)
-                _process_competitions(kit, competitions_html, slug)
+                _process_competitions(kit, data.competitions_html, slug)
 
                 # Process colors if available
-                if colors_data:
-                    _process_colors(kit, colors_data)
+                if data.colors_str:
+                    _process_colors(kit, data.colors_str)
 
                 if not created:
                     logger.info(f"Updated existing kit: {kit}")
