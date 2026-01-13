@@ -31,7 +31,7 @@ class Season(models.Model):
     def __str__(self):
         return self.year
 
-class Type_K(models.Model):
+class Type_K(models.Model):  # noqa: N801
     name = models.CharField(max_length=100)
 
     def __str__(self):

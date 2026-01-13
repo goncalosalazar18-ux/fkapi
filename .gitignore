@@ -1,19 +1,71 @@
-.env
-venv/
+# Python
+*.py[cod]
+*$py.class
+*.so
+.Python
 *.pyc
 __pycache__/
-migrations/
-fkapi/core/migrations/
 **/__pycache__/
 *.pyc
-# Database files
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# Environment variables
+.env
+.env.local
+
+# Django
+*.log
+logs/
+db.sqlite3
 *.db
 *.sqlite
 *.sqlite3
-db.sqlite3
+test_db.sqlite3
+migrations/
+fkapi/core/migrations/
 
-*.log
-logs/
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
 
 # GitLab symlink
 gitlab_link/
+
+# Project specific
+kits_to_fix.txt
+clubs_to_fix.txt
+api.log

@@ -66,6 +66,42 @@ def db_connection():
         connection.close()
 
 
+def _is_postgresql():
+    """Check if the database is PostgreSQL."""
+    return connection.vendor == "postgresql"
+
+
+def _search_filter(field, keyword):
+    """Create a search filter that works with both PostgreSQL and SQLite."""
+    if _is_postgresql():
+        return Q(**{f"{field}__trigram_word_similar": keyword})
+    else:
+        return Q(**{f"{field}__icontains": keyword})
+
+
+def _unaccent_filter(field, value):
+    """Create an unaccent filter that works with both PostgreSQL and SQLite."""
+    if _is_postgresql():
+        return Q(**{f"{field}__unaccent__icontains": value})
+    else:
+        return Q(**{f"{field}__icontains": value})
+
+
+@api.get(
+    "/health",
+    summary="Health Check",
+    description="Check API health status",
+    tags=["Health"],
+)
+def health_check(request):
+    """Health check endpoint."""
+    try:
+        connection.ensure_connection()
+        return {"status": "healthy"}
+    except Exception:
+        return {"status": "unhealthy"}
+
+
 @api.get(
     "/clubs/search",
     response=list[ClubSerializer],
@@ -94,7 +130,7 @@ def search_clubs(
     """
     with transaction.atomic():
         clubs = Club.objects.filter(
-            Q(name__trigram_word_similar=keyword) | Q(slug__trigram_word_similar=keyword)
+            _search_filter("name", keyword) | _search_filter("slug", keyword)
         ).order_by("id")[:10]
         return clubs
 
@@ -123,7 +159,7 @@ def search_brands(
         List[BrandJsonSchema]: List of matching brands, limited to 10 results
     """
     brands = Brand.objects.filter(
-        Q(name__trigram_word_similar=keyword) | Q(slug__trigram_word_similar=keyword)
+        _search_filter("name", keyword) | _search_filter("slug", keyword)
     ).order_by("id")[:10]
 
     # Explicitly serialize as list of dicts in case BrandJsonSchema is a pydantic/ninja schema
@@ -164,7 +200,7 @@ def search_competitions(
         List[CompetitionJsonSchema]: List of matching competitions, limited to 10 results
     """
     competitions = Competition.objects.filter(
-        Q(name__trigram_word_similar=keyword) | Q(slug__trigram_word_similar=keyword)
+        _search_filter("name", keyword) | _search_filter("slug", keyword)
     ).order_by("id")[:10]
 
     competition_logo_default = "https://www.footballkitarchive.com/static/logos/not_found.png"
@@ -600,7 +636,7 @@ def search_kits(request, keyword: str = Query(None, description="Search query", 
         terms = search_terms.split()
 
         # First try: simple icontains search (fastest)
-        simple_matches = base_kits.filter(name__unaccent__icontains=search_terms)[:20]
+        simple_matches = base_kits.filter(_unaccent_filter("name", search_terms))[:20]
 
         if simple_matches.exists():
             kits = simple_matches
@@ -609,7 +645,7 @@ def search_kits(request, keyword: str = Query(None, description="Search query", 
             term_matches = base_kits
             for term in terms:
                 if len(term) > 2:  # Only search terms longer than 2 characters
-                    term_matches = term_matches.filter(name__unaccent__icontains=term)
+                    term_matches = term_matches.filter(_unaccent_filter("name", term))
 
             if term_matches.exists():
                 kits = term_matches[:20]
@@ -618,7 +654,7 @@ def search_kits(request, keyword: str = Query(None, description="Search query", 
                 or_query = Q()
                 for term in terms:
                     if len(term) > 2:
-                        or_query |= Q(name__unaccent__icontains=term)
+                        or_query |= _unaccent_filter("name", term)
 
                 if or_query:
                     kits = base_kits.filter(or_query)[:20]
