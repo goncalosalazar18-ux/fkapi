@@ -48,6 +48,25 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
+# Cache configuration
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': os.getenv('REDIS_URL', 'redis://localhost:6379/1'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        },
+        'KEY_PREFIX': 'fkapi',
+        'TIMEOUT': 3600,  # Default timeout: 1 hour
+    }
+}
+
+# Cache settings
+CACHE_TIMEOUT_SHORT = 300  # 5 minutes
+CACHE_TIMEOUT_MEDIUM = 1800  # 30 minutes
+CACHE_TIMEOUT_LONG = 3600  # 1 hour
+CACHE_TIMEOUT_VERY_LONG = 86400  # 24 hours
+
 # Application definition
 
 INSTALLED_APPS = [
