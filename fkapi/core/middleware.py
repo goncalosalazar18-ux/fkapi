@@ -78,34 +78,38 @@ def performance_monitoring_middleware(get_response):
     """
     def middleware(request):
         start_time = time.time()
-        
+
         queries_available = settings.DEBUG and hasattr(connection, 'queries')
         if queries_available:
             initial_queries = len(connection.queries)
         else:
             initial_queries = 0
-        
+
         response = get_response(request)
-        
+
         duration = time.time() - start_time
-        
+
         if queries_available:
             total_queries = len(connection.queries) - initial_queries
         else:
             total_queries = 0
-        
+
         path = request.path
         method = request.method
         status_code = response.status_code if hasattr(response, 'status_code') else 200
-        
+
         slow_query_threshold = getattr(settings, 'SLOW_QUERY_THRESHOLD', 0.5)
         slow_response_threshold = getattr(settings, 'SLOW_RESPONSE_THRESHOLD', 1.0)
-        
+
         if queries_available and total_queries > 0:
             query_times = [float(q.get('time', 0)) for q in connection.queries[initial_queries:]]
             total_query_time = sum(query_times)
-            slow_queries = [q for q, t in zip(connection.queries[initial_queries:], query_times) if t > slow_query_threshold]
-            
+            slow_queries = [
+                connection.queries[initial_queries + i]
+                for i, t in enumerate(query_times)
+                if t > slow_query_threshold
+            ]
+
             if slow_queries:
                 for query in slow_queries:
                     db_logger.warning(
@@ -116,7 +120,7 @@ def performance_monitoring_middleware(get_response):
                             'duration': query.get('time', 0),
                         }
                     )
-            
+
             if getattr(settings, 'LOG_DB_QUERIES', False):
                 db_logger.info(
                     f"DB queries: {total_queries} queries in {total_query_time:.3f}s",
@@ -127,7 +131,7 @@ def performance_monitoring_middleware(get_response):
                         'total_query_time': total_query_time,
                     }
                 )
-        
+
         if duration > slow_response_threshold:
             performance_logger.warning(
                 f"Slow response: {method} {path} took {duration:.3f}s (status: {status_code})",
@@ -150,10 +154,10 @@ def performance_monitoring_middleware(get_response):
                     'query_count': total_queries,
                 }
             )
-        
+
         if path.startswith('/api/'):
             _track_api_usage(request, response, duration, total_queries)
-        
+
         if hasattr(response, 'headers'):
             response.headers['X-Response-Time'] = f"{duration:.3f}s"
             if total_queries > 0:
@@ -165,7 +169,7 @@ def performance_monitoring_middleware(get_response):
                     response['X-Query-Count'] = str(total_queries)
             except (TypeError, KeyError):
                 pass
-        
+
         return response
 
     return middleware
@@ -179,10 +183,10 @@ def _track_api_usage(request: Any, response: Any, duration: float, query_count: 
         path = request.path
         method = request.method
         status_code = getattr(response, 'status_code', 200)
-        
+
         stats_key = 'api_usage_stats'
         cached_stats = cache.get(stats_key, {})
-        
+
         if not cached_stats:
             stats = defaultdict(lambda: {
                 'count': 0,
@@ -202,13 +206,13 @@ def _track_api_usage(request: Any, response: Any, duration: float, query_count: 
                     stats[key]['status_codes'] = defaultdict(int, value['status_codes'])
                 else:
                     stats[key].update(value)
-        
+
         endpoint_key = f"{method} {path}"
         stats[endpoint_key]['count'] += 1
         stats[endpoint_key]['total_duration'] += duration
         stats[endpoint_key]['total_queries'] += query_count
         stats[endpoint_key]['status_codes'][status_code] += 1
-        
+
         stats_dict = {}
         for key, value in stats.items():
             stats_dict[key] = {
@@ -217,7 +221,7 @@ def _track_api_usage(request: Any, response: Any, duration: float, query_count: 
                 'total_queries': value['total_queries'],
                 'status_codes': dict(value['status_codes']),
             }
-        
+
         cache.set(stats_key, stats_dict, timeout=3600)
     except Exception as e:
         logger.error(f"Error tracking API usage: {str(e)}")

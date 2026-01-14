@@ -4,7 +4,6 @@ import time
 from unittest.mock import Mock, patch
 
 from django.core.cache import cache
-from django.db import connection
 from django.test import RequestFactory, TestCase, override_settings
 
 from core.middleware import (
@@ -20,7 +19,7 @@ class MiddlewareTests(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         from django.http import HttpResponse
-        
+
         self.rf = RequestFactory()
         self.mock_get_response = Mock(return_value=HttpResponse())
         cache.clear()
@@ -86,9 +85,9 @@ class MiddlewareTests(TestCase):
         with patch('core.middleware.performance_logger') as mock_logger:
             middleware = performance_monitoring_middleware(self.mock_get_response)
             request = self.rf.get("/api/test")
-            
+
             response = middleware(request)
-            
+
             self.assertEqual(response.status_code, 200)
             mock_logger.info.assert_called_once()
             call_args = mock_logger.info.call_args
@@ -98,17 +97,17 @@ class MiddlewareTests(TestCase):
     def test_performance_middleware_tracks_slow_responses(self):
         """Test that performance middleware detects slow responses."""
         from django.http import HttpResponse
-        
+
         with patch('core.middleware.performance_logger') as mock_logger:
             def slow_response(request):
                 time.sleep(0.02)
                 return HttpResponse()
-            
+
             middleware = performance_monitoring_middleware(slow_response)
             request = self.rf.get("/api/test")
-            
+
             response = middleware(request)
-            
+
             self.assertEqual(response.status_code, 200)
             mock_logger.warning.assert_called_once()
             call_args = mock_logger.warning.call_args
@@ -117,12 +116,12 @@ class MiddlewareTests(TestCase):
     @override_settings(SLOW_QUERY_THRESHOLD=0.01, LOG_DB_QUERIES=True, DEBUG=True)
     def test_performance_middleware_tracks_queries(self):
         """Test that performance middleware tracks database queries."""
-        with patch('core.middleware.db_logger') as mock_db_logger:
+        with patch('core.middleware.db_logger'):
             middleware = performance_monitoring_middleware(self.mock_get_response)
             request = self.rf.get("/api/test")
-            
+
             response = middleware(request)
-            
+
             self.assertEqual(response.status_code, 200)
             self.assertIn('X-Response-Time', response.headers)
 
@@ -130,9 +129,9 @@ class MiddlewareTests(TestCase):
         """Test that performance middleware adds response time header."""
         middleware = performance_monitoring_middleware(self.mock_get_response)
         request = self.rf.get("/api/test")
-        
+
         response = middleware(request)
-        
+
         self.assertIn('X-Response-Time', response.headers)
         if 'X-Query-Count' in response.headers:
             query_count = int(response.headers['X-Query-Count'])
@@ -141,14 +140,14 @@ class MiddlewareTests(TestCase):
     def test_performance_middleware_tracks_api_usage(self):
         """Test that performance middleware tracks API usage statistics."""
         from django.core.cache import cache as django_cache
-        
+
         django_cache.clear()
         middleware = performance_monitoring_middleware(self.mock_get_response)
         request = self.rf.get("/api/kits")
-        
+
         response = middleware(request)
-        
+
         self.assertEqual(response.status_code, 200)
-        
+
         stats = django_cache.get('api_usage_stats', {})
         self.assertIn('GET /api/kits', stats)

@@ -45,6 +45,7 @@ ignore = [
     "DJ003",  # Model has no __unicode__ method (Python 3)
     "DJ006",  # Model has no Meta class (not always needed)
     "DJ008",  # Model has no __repr__ method (not always needed)
+    "B905",  # zip() without explicit strict= (not available in Python 3.10)
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
