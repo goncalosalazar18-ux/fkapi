@@ -11,7 +11,6 @@ import hashlib
 import logging
 from typing import Any
 
-from django.core.cache import cache
 from django.db.models.signals import post_delete, post_save
 
 from core.models import Brand, Club, Competition, Kit, Season
@@ -151,15 +150,17 @@ def _invalidate_patterns(patterns: list[str]) -> None:
 
         redis_client = get_redis_connection("default")
         for pattern in patterns:
-            keys = redis_client.keys(f"fkapi:{pattern}")
-            if keys:
-                redis_client.delete(*keys)
-                logger.info(f"Invalidated {len(keys)} cache keys matching pattern: {pattern}")
+            try:
+                keys = redis_client.keys(f"fkapi:{pattern}")
+                if keys:
+                    redis_client.delete(*keys)
+                    logger.info(f"Invalidated {len(keys)} cache keys matching pattern: {pattern}")
+            except Exception as pattern_error:
+                logger.debug(f"Pattern invalidation not supported for pattern {pattern}: {str(pattern_error)}")
     except ImportError:
-        logger.warning("django-redis not available, using fallback cache.clear()")
-        cache.clear()
+        logger.debug("django-redis not available, skipping pattern-based invalidation")
     except Exception as e:
-        logger.error(f"Error invalidating cache patterns: {str(e)}")
+        logger.debug(f"Cache pattern invalidation not supported: {str(e)}")
 
 
 def setup_cache_invalidation() -> None:
