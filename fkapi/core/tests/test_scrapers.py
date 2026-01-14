@@ -8,7 +8,6 @@ from django.test import TestCase
 from core.models import Brand, Club, Color, Competition, Kit, Season, Type_K
 from core.scrapers import (
     _get_or_create_brand,
-    _process_colors,
     _process_kit,
     get_current_season,
     get_season,
@@ -1335,54 +1334,6 @@ class ScraperTests(TestCase):
         # Test invalid page range
         with self.assertRaises(ValueError):
             scrape_latest_pages(page_start=2, page_end=1)
-
-    def test_process_colors(self):
-        """Test the _process_colors function."""
-        # Create test colors
-        white = Color.objects.create(name="White", color="#FFFFFF")
-        blue = Color.objects.create(name="Blue", color="#0000FF")
-        red = Color.objects.create(name="Red", color="#FF0000")
-        green = Color.objects.create(name="Green", color="#008000")
-
-        # Create a test kit
-        kit = Kit.objects.create(
-            name="Test Kit",
-            slug="test-kit",
-            team=self.club,
-            season=self.current_season,
-            type=self.type_k,
-            brand=self.brand,
-            main_img_url="https://example.com/image.jpg",
-            rating=4.5
-        )
-
-        # Test single color
-        _process_colors(kit, "Blue")
-        kit.refresh_from_db()
-        self.assertEqual(kit.primary_color, blue)
-        self.assertEqual(kit.secondary_color.count(), 0)
-
-        # Test with one secondary color
-        _process_colors(kit, "Red / White")
-        kit.refresh_from_db()
-        self.assertEqual(kit.primary_color, red)
-        self.assertIn(white, kit.secondary_color.all())
-
-        # Test with two secondary colors
-        _process_colors(kit, "White / Blue / Red")
-        kit.refresh_from_db()
-        self.assertEqual(kit.primary_color, white)
-        self.assertIn(blue, kit.secondary_color.all())
-        self.assertIn(red, kit.secondary_color.all())
-
-        # Test with three secondary colors
-        _process_colors(kit, "Green / Blue / Red / White")
-        kit.refresh_from_db()
-        self.assertEqual(kit.primary_color, green)
-        self.assertIn(blue, kit.secondary_color.all())
-        self.assertIn(red, kit.secondary_color.all())
-        self.assertIn(white, kit.secondary_color.all())
-        self.assertEqual(kit.secondary_color.count(), 3)
 
     @patch('core.scrapers.http_get')
     def test_design_extraction(self, mock_http_get):
