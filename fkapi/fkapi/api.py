@@ -1,5 +1,4 @@
 # Standard library imports
-import hashlib
 import os
 import re
 from contextlib import contextmanager
@@ -11,8 +10,11 @@ from django.core.cache import cache
 from django.db import connection, transaction
 from django.db.models import Q
 from django.http import HttpRequest, JsonResponse
+from django.shortcuts import get_object_or_404
 from ninja import NinjaAPI, Path, Query, Schema
 from ninja_apikey.security import APIKeyAuth
+
+from core.cache_utils import generate_cache_key
 
 # Local imports
 from core.exceptions import (
@@ -269,10 +271,19 @@ def search_clubs(
     Returns:
         List[ClubSerializer]: List of matching clubs, limited to 10 results
     """
+    from django.conf import settings
+
+    cache_key = generate_cache_key("search_clubs", keyword)
+    cached_result = cache.get(cache_key)
+
+    if cached_result is not None:
+        return cached_result
+
     with transaction.atomic():
-        clubs = Club.objects.filter(
+        clubs = list(Club.objects.filter(
             _search_filter("name", keyword) | _search_filter("slug", keyword)
-        ).order_by("id")[:10]
+        ).order_by("id")[:10])
+        cache.set(cache_key, clubs, timeout=settings.CACHE_TIMEOUT_MEDIUM)
         return clubs
 
 
@@ -299,12 +310,19 @@ def search_brands(
     Returns:
         List[BrandJsonSchema]: List of matching brands, limited to 10 results
     """
+    from django.conf import settings
+
+    cache_key = generate_cache_key("search_brands", keyword)
+    cached_result = cache.get(cache_key)
+
+    if cached_result is not None:
+        return cached_result
+
     brands = Brand.objects.filter(
         _search_filter("name", keyword) | _search_filter("slug", keyword)
     ).order_by("id")[:10]
 
-    # Explicitly serialize as list of dicts in case BrandJsonSchema is a pydantic/ninja schema
-    return [
+    result = [
         BrandJsonSchema(
             id=b.id,
             name=b.name,
@@ -314,6 +332,8 @@ def search_brands(
         )
         for b in brands
     ]
+    cache.set(cache_key, result, timeout=settings.CACHE_TIMEOUT_MEDIUM)
+    return result
 
 
 @api.get(
@@ -340,12 +360,20 @@ def search_competitions(
     Returns:
         List[CompetitionJsonSchema]: List of matching competitions, limited to 10 results
     """
+    from django.conf import settings
+
+    cache_key = generate_cache_key("search_competitions", keyword)
+    cached_result = cache.get(cache_key)
+
+    if cached_result is not None:
+        return cached_result
+
     competitions = Competition.objects.filter(
         _search_filter("name", keyword) | _search_filter("slug", keyword)
     ).order_by("id")[:10]
 
     competition_logo_default = "https://www.footballkitarchive.com/static/logos/not_found.png"
-    return [
+    result = [
         CompetitionJsonSchema(
             id=c.id,
             name=c.name,
@@ -356,6 +384,8 @@ def search_competitions(
         )
         for c in competitions
     ]
+    cache.set(cache_key, result, timeout=settings.CACHE_TIMEOUT_MEDIUM)
+    return result
 
 
 @api.get(
@@ -386,7 +416,16 @@ def get_kits(
     Returns:
         List[KitSerializer]: List of kits matching the criteria
     """
-    kits = Kit.objects.filter(season__id=season, team__id=club)
+    from django.conf import settings
+
+    cache_key = generate_cache_key("kit", "club", club, "season", season)
+    cached_result = cache.get(cache_key)
+
+    if cached_result is not None:
+        return cached_result
+
+    kits = list(Kit.objects.filter(season__id=season, team__id=club).select_related("team", "season", "brand", "type"))
+    cache.set(cache_key, kits, timeout=settings.CACHE_TIMEOUT_MEDIUM)
     return kits
 
 
@@ -416,12 +455,21 @@ def get_seasons(request: HttpRequest, id: int = Query(..., description="Club ID"
     Raises:
         ClubNotFoundError: If the club with the given ID is not found
     """
+    from django.conf import settings
+
+    cache_key = generate_cache_key("season", "club", id)
+    cached_result = cache.get(cache_key)
+
+    if cached_result is not None:
+        return cached_result
+
     try:
         club = Club.objects.get(id=id)
     except Club.DoesNotExist as e:
         raise ClubNotFoundError(f"club-{id}", f"Club with ID {id} not found") from e
     kits = Kit.objects.filter(team=club).select_related("season").distinct("season")
     seasons = sorted([kit.season for kit in kits], key=lambda x: x.year, reverse=True)
+    cache.set(cache_key, seasons, timeout=settings.CACHE_TIMEOUT_LONG)
     return seasons
 
 
@@ -462,7 +510,9 @@ def search_seasons(
     if not keyword:
         return []
 
-    cache_key = f"season_search_{hashlib.md5(keyword.encode()).hexdigest()}"
+    from django.conf import settings
+
+    cache_key = generate_cache_key("search_seasons", keyword)
     cached_result = cache.get(cache_key)
 
     if cached_result is not None:
@@ -510,7 +560,7 @@ def search_seasons(
     seasons = Season.objects.filter(year_query).order_by("-year")[:10]
     result = list(seasons)
 
-    cache.set(cache_key, result, timeout=3600)
+    cache.set(cache_key, result, timeout=settings.CACHE_TIMEOUT_MEDIUM)
 
     return result
 
@@ -549,10 +599,20 @@ def get_kit_json(request: HttpRequest, kit_id: int = Path(..., description="Kit 
     Raises:
         KitNotFoundError: If the kit with the given ID is not found
     """
+    from django.conf import settings
+
+    cache_key = generate_cache_key("kit_json", kit_id)
+    cached_result = cache.get(cache_key)
+
+    if cached_result is not None:
+        return cached_result
+
     try:
-        kit = Kit.objects.get(id=kit_id)
-    except Kit.DoesNotExist as e:
-        raise KitNotFoundError(f"kit-{kit_id}", f"Kit with ID {kit_id} not found") from e
+        kit = get_object_or_404(Kit.objects.select_related("team", "season", "brand", "type", "primary_color").prefetch_related("competition", "secondary_color"), id=kit_id)
+    except Exception as e:
+        if 'not found' in str(e).lower() or 'does not exist' in str(e).lower():
+            raise KitNotFoundError(f"kit-{kit_id}", f"Kit with ID {kit_id} not found") from e
+        raise
     competition_logo_default = "https://www.footballkitarchive.com/static/logos/not_found.png"
 
     # Prepare primary color if available
@@ -570,7 +630,7 @@ def get_kit_json(request: HttpRequest, kit_id: int = Path(..., description="Kit 
     if hasattr(kit.team, "country") and kit.team.country:
         country_code = kit.team.country.code
 
-    return KitJsonSchema(
+    result = KitJsonSchema(
         name=kit.name,
         slug=kit.slug,
         team=ClubJsonSchema(
@@ -612,6 +672,8 @@ def get_kit_json(request: HttpRequest, kit_id: int = Path(..., description="Kit 
         secondary_color=secondary_colors,
         main_img_url=kit.main_img_url,
     )
+    cache.set(cache_key, result, timeout=settings.CACHE_TIMEOUT_LONG)
+    return result
 
 
 @api.get(
@@ -746,9 +808,17 @@ def send_kit(request: HttpRequest, kit_id: int = Path(..., description="Kit ID",
     tags=["Kits"],
 )
 def search_kits(request: HttpRequest, keyword: str | None = Query(None, description="Search query", example="Málaga 2003")) -> list[KitSearchResult]:
+    from django.conf import settings
+
     search_query = keyword
     if not search_query:
         return []
+
+    cache_key = generate_cache_key("search_kits", search_query)
+    cached_result = cache.get(cache_key)
+
+    if cached_result is not None:
+        return cached_result
 
     # Extract year from query if present
     year_match = re.search(r"\b(19|20)\d{2}\b", search_query)
@@ -825,6 +895,7 @@ def search_kits(request: HttpRequest, keyword: str | None = Query(None, descript
                 "season_year": kit.season.year,
             }
         )
+    cache.set(cache_key, results, timeout=settings.CACHE_TIMEOUT_MEDIUM)
     return results
 
 

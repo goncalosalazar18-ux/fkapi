@@ -107,6 +107,12 @@ CACHES = {
     }
 }
 
+# Cache timeout settings
+CACHE_TIMEOUT_SHORT = 300  # 5 minutes
+CACHE_TIMEOUT_MEDIUM = 1800  # 30 minutes
+CACHE_TIMEOUT_LONG = 3600  # 1 hour
+CACHE_TIMEOUT_VERY_LONG = 86400  # 24 hours
+
 # Performance Monitoring Settings
 SLOW_QUERY_THRESHOLD = 0.5
 SLOW_RESPONSE_THRESHOLD = 1.0
