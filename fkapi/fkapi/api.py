@@ -703,7 +703,7 @@ def send_kit(request: HttpRequest, kit_id: int = Path(..., description="Kit ID",
         RequestException: If there's an error sending data to the external API
     """
     try:
-        kit = Kit.objects.get(id=kit_id)
+        kit = Kit.objects.select_related("team", "season", "brand", "type", "primary_color").prefetch_related("competition", "secondary_color").get(id=kit_id)
     except Kit.DoesNotExist as e:
         raise KitNotFoundError(f"kit-{kit_id}", f"Kit with ID {kit_id} not found") from e
         competition_logo_default = "https://www.footballkitarchive.com/static/logos/not_found.png"
@@ -1008,7 +1008,7 @@ def get_random_kits(request: HttpRequest, page: int = Query(1, description="Page
     from django.core.paginator import Paginator
 
     # Get random kits that have main images
-    kits = Kit.objects.filter(main_img_url__isnull=False, main_img_url__gt="").order_by("?")
+    kits = Kit.objects.filter(main_img_url__isnull=False, main_img_url__gt="").select_related("team", "season", "type", "brand", "primary_color").prefetch_related("secondary_color").order_by("?")
 
     # Paginate results
     paginator = Paginator(kits, page_size)
@@ -1017,6 +1017,12 @@ def get_random_kits(request: HttpRequest, page: int = Query(1, description="Page
     # Serialize kits
     kits_data = []
     for kit in page_obj:
+        secondary_color_name = None
+        if kit.secondary_color.exists():
+            secondary_colors = list(kit.secondary_color.all())
+            if secondary_colors:
+                secondary_color_name = secondary_colors[0].name
+
         kits_data.append(
             {
                 "id": kit.id,
@@ -1028,9 +1034,9 @@ def get_random_kits(request: HttpRequest, page: int = Query(1, description="Page
                 "type_name": kit.type.name if kit.type else None,
                 "brand_name": kit.brand.name if kit.brand else None,
                 "rating": float(kit.rating) if kit.rating else None,
-                "colors": f"{kit.primary_color.name} / {kit.secondary_color.name}"
-                if kit.primary_color and kit.secondary_color
-                else None,
+                "colors": f"{kit.primary_color.name} / {secondary_color_name}"
+                if kit.primary_color and secondary_color_name
+                else (kit.primary_color.name if kit.primary_color else None),
                 "design": kit.design,
             }
         )
@@ -1097,10 +1103,13 @@ def get_random_clubs(request: HttpRequest, page: int = Query(1, description="Pag
     from django.core.paginator import Paginator
 
     try:
+        from django.db.models import Count
+
         # Get clubs that have logos and exclude default logo
         clubs = (
             Club.objects.filter(logo__isnull=False, logo__gt="")
             .exclude(logo="https://www.footballkitarchive.com/static/logos/not_found.png")
+            .annotate(kit_count=Count("kit"))
             .order_by("?")
         )
 
@@ -1118,7 +1127,7 @@ def get_random_clubs(request: HttpRequest, page: int = Query(1, description="Pag
                     "slug": club.slug,
                     "logo": club.logo,
                     "country": str(club.country) if club.country else None,
-                    "kit_count": club.kit_set.count(),
+                    "kit_count": club.kit_count,
                 }
             )
 
@@ -1595,8 +1604,8 @@ def merge_clubs(request: HttpRequest, source_id: int = Query(...), target_id: in
     from django.db import transaction
 
     try:
-        source_club = Club.objects.get(id=source_id)
-        target_club = Club.objects.get(id=target_id)
+        source_club = Club.objects.select_related().get(id=source_id)
+        target_club = Club.objects.select_related().get(id=target_id)
 
         if source_club.id == target_club.id:
             return {"success": False, "error": "Cannot merge a club with itself"}
