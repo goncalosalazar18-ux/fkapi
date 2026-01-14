@@ -546,7 +546,6 @@ def get_kit_json(request: HttpRequest, kit_id: int = Path(..., description="Kit 
         if 'not found' in str(e).lower() or 'does not exist' in str(e).lower():
             raise KitNotFoundError(f"kit-{kit_id}", f"Kit with ID {kit_id} not found") from e
         raise
-        raise
     competition_logo_default = "https://www.footballkitarchive.com/static/logos/not_found.png"
 
     # Prepare primary color if available
