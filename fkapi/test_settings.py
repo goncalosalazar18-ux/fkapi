@@ -40,6 +40,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'core.middleware.rate_limit_middleware',
+    'core.middleware.performance_monitoring_middleware',
 ]
 
 ROOT_URLCONF = 'fkapi.urls'
@@ -111,6 +112,48 @@ CACHE_TIMEOUT_SHORT = 300  # 5 minutes
 CACHE_TIMEOUT_MEDIUM = 1800  # 30 minutes
 CACHE_TIMEOUT_LONG = 3600  # 1 hour
 CACHE_TIMEOUT_VERY_LONG = 86400  # 24 hours
+
+# Performance Monitoring Settings
+SLOW_QUERY_THRESHOLD = 0.5
+SLOW_RESPONSE_THRESHOLD = 1.0
+LOG_DB_QUERIES = False
+
+# Logging Configuration
+LOGS_DIR = BASE_DIR / 'logs'
+LOGS_DIR.mkdir(exist_ok=True)
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'performance': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.db.backends': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+    },
+}
 
 # Test-specific settings
 API_RATE_LIMIT = {

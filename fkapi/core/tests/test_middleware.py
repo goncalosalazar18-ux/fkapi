@@ -1,11 +1,16 @@
 """Tests for middleware."""
 
-from unittest.mock import Mock
+import time
+from unittest.mock import Mock, patch
 
 from django.core.cache import cache
 from django.test import RequestFactory, TestCase, override_settings
 
-from core.middleware import _get_client_ip, rate_limit_middleware
+from core.middleware import (
+    _get_client_ip,
+    performance_monitoring_middleware,
+    rate_limit_middleware,
+)
 
 
 class MiddlewareTests(TestCase):
@@ -13,8 +18,10 @@ class MiddlewareTests(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        from django.http import HttpResponse
+
         self.rf = RequestFactory()
-        self.mock_get_response = Mock(return_value=Mock(status_code=200))
+        self.mock_get_response = Mock(return_value=HttpResponse())
         cache.clear()
 
     def test_get_client_ip_default(self):
@@ -71,3 +78,76 @@ class MiddlewareTests(TestCase):
         # Should not be rate limited
         response = middleware(request)
         self.assertEqual(response.status_code, 200)
+
+    @override_settings(SLOW_RESPONSE_THRESHOLD=0.01)
+    def test_performance_middleware_logs_response_time(self):
+        """Test that performance middleware logs response time."""
+        with patch('core.middleware.performance_logger') as mock_logger:
+            middleware = performance_monitoring_middleware(self.mock_get_response)
+            request = self.rf.get("/api/test")
+
+            response = middleware(request)
+
+            self.assertEqual(response.status_code, 200)
+            mock_logger.info.assert_called_once()
+            call_args = mock_logger.info.call_args
+            self.assertIn("/api/test", str(call_args))
+
+    @override_settings(SLOW_RESPONSE_THRESHOLD=0.01)
+    def test_performance_middleware_tracks_slow_responses(self):
+        """Test that performance middleware detects slow responses."""
+        from django.http import HttpResponse
+
+        with patch('core.middleware.performance_logger') as mock_logger:
+            def slow_response(request):
+                time.sleep(0.02)
+                return HttpResponse()
+
+            middleware = performance_monitoring_middleware(slow_response)
+            request = self.rf.get("/api/test")
+
+            response = middleware(request)
+
+            self.assertEqual(response.status_code, 200)
+            mock_logger.warning.assert_called_once()
+            call_args = mock_logger.warning.call_args
+            self.assertIn("Slow response", str(call_args))
+
+    @override_settings(SLOW_QUERY_THRESHOLD=0.01, LOG_DB_QUERIES=True, DEBUG=True)
+    def test_performance_middleware_tracks_queries(self):
+        """Test that performance middleware tracks database queries."""
+        with patch('core.middleware.db_logger'):
+            middleware = performance_monitoring_middleware(self.mock_get_response)
+            request = self.rf.get("/api/test")
+
+            response = middleware(request)
+
+            self.assertEqual(response.status_code, 200)
+            self.assertIn('X-Response-Time', response.headers)
+
+    def test_performance_middleware_adds_response_headers(self):
+        """Test that performance middleware adds response time header."""
+        middleware = performance_monitoring_middleware(self.mock_get_response)
+        request = self.rf.get("/api/test")
+
+        response = middleware(request)
+
+        self.assertIn('X-Response-Time', response.headers)
+        if 'X-Query-Count' in response.headers:
+            query_count = int(response.headers['X-Query-Count'])
+            self.assertGreaterEqual(query_count, 0)
+
+    def test_performance_middleware_tracks_api_usage(self):
+        """Test that performance middleware tracks API usage statistics."""
+        from django.core.cache import cache as django_cache
+
+        django_cache.clear()
+        middleware = performance_monitoring_middleware(self.mock_get_response)
+        request = self.rf.get("/api/kits")
+
+        response = middleware(request)
+
+        self.assertEqual(response.status_code, 200)
+
+        stats = django_cache.get('api_usage_stats', {})
+        self.assertIn('GET /api/kits', stats)
