@@ -38,18 +38,24 @@ class Type_K(models.Model):  # noqa: N801
         return self.name
 
 class Competition(models.Model):
-    name = models.CharField(max_length=100)
+    name = models.CharField(max_length=100, db_index=True)
     slug = models.SlugField(unique=True,max_length=150)
     logo = models.URLField(null=True,blank=True)
     logo_dark = models.URLField(null=True,blank=True)
     country = CountryField(blank=True, null=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['name']),
+            models.Index(fields=['country']),
+        ]
 
     def __str__(self):
         return self.name
 
 class Club(models.Model):
     id_fka = models.IntegerField(null=True,blank=True)
-    name = models.CharField(max_length=500)
+    name = models.CharField(max_length=500, db_index=True)
     # Custom slug field that allows special characters(The Django default slug field does not allow special characters)
     slug = models.CharField(unique=True, db_index=True, max_length=150, validators=[
         RegexValidator(
@@ -62,20 +68,31 @@ class Club(models.Model):
     logo_dark = models.URLField(null=True,blank=True)
     country = CountryField(blank=True, null=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['name']),
+            models.Index(fields=['country']),
+        ]
+
     def __str__(self):
         return self.name
 
 class Brand(models.Model):
-    name = models.CharField(max_length=100)
+    name = models.CharField(max_length=100, db_index=True)
     slug = models.SlugField(unique=True,max_length=150)
     logo = models.URLField(null=True,blank=True)
     logo_dark = models.URLField(null=True,blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['name']),
+        ]
 
     def __str__(self):
         return self.name
 
 class Kit(models.Model):
-    name = models.CharField(max_length=100)
+    name = models.CharField(max_length=100, db_index=True)
     # Custom slug field that allows special characters(The Django default slug field does not allow special characters)
     slug = models.CharField(unique=True, db_index=True, max_length=150, validators=[
         RegexValidator(
@@ -98,6 +115,16 @@ class Kit(models.Model):
     primary_color = models.ForeignKey(Color, on_delete=models.SET_NULL,related_name='primary_color', null=True,blank=True)
     secondary_color = models.ManyToManyField(Color, related_name='secondary_color', blank=True)
     design = models.CharField(max_length=100, null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['name']),
+            models.Index(fields=['team', 'season']),
+            models.Index(fields=['main_img_url']),
+            models.Index(fields=['web_updated']),
+            models.Index(fields=['last_updated']),
+            models.Index(fields=['rating']),
+        ]
 
     def __str__(self):
         return self.name
