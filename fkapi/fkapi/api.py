@@ -1,5 +1,4 @@
 # Standard library imports
-import hashlib
 import os
 import re
 from contextlib import contextmanager
@@ -11,8 +10,11 @@ from django.core.cache import cache
 from django.db import connection, transaction
 from django.db.models import Q
 from django.http import HttpRequest, JsonResponse
+from django.shortcuts import get_object_or_404
 from ninja import NinjaAPI, Path, Query, Schema
 from ninja_apikey.security import APIKeyAuth
+
+from core.cache_utils import generate_cache_key
 
 # Local imports
 from core.exceptions import (
@@ -22,7 +24,6 @@ from core.exceptions import (
     RateLimitExceededError,
     ScrapingError,
 )
-from core.cache_utils import generate_cache_key
 from core.models import Brand, Club, Competition, Kit, Season
 from core.serializers import (
     BrandJsonSchema,
@@ -542,8 +543,9 @@ def get_kit_json(request: HttpRequest, kit_id: int = Path(..., description="Kit 
     try:
         kit = get_object_or_404(Kit.objects.select_related("team", "season", "brand", "type", "primary_color").prefetch_related("competition", "secondary_color"), id=kit_id)
     except Exception as e:
-        if isinstance(e.__cause__, Kit.DoesNotExist) or 'not found' in str(e).lower():
+        if 'not found' in str(e).lower() or 'does not exist' in str(e).lower():
             raise KitNotFoundError(f"kit-{kit_id}", f"Kit with ID {kit_id} not found") from e
+        raise
         raise
     competition_logo_default = "https://www.footballkitarchive.com/static/logos/not_found.png"
 
