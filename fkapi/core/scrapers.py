@@ -11,16 +11,11 @@ from colorama import Fore
 
 # Django imports
 from django.db import connection, transaction
-from django.utils import timezone
-from django.utils.text import slugify
 
 from core.constants import (
     BASE_URL,
     BRAND_SLUG_SUFFIX,
     COLLECTION_CONTAINER_CLASS,
-    COLOR_SEPARATOR_SLASH,
-    COMPETITION_SEPARATOR,
-    COMPETITION_SLUG_SUFFIX,
     CURRENT_CENTURY,
     CURRENT_SEASON_YEAR,
     DEFAULT_LOGO_URL,
@@ -33,13 +28,13 @@ from core.constants import (
     MAX_RETRIES,
     RETRY_DELAY,
     SECTION_DETAILS_CLASS,
-    TEAM_SLUG_CHANGES_LOG,
 )
 from core.http import http_get
 from core.parsers import extract_fact_table, parse_kit_page
+from core.services.scraping_service import ScrapingService
 
 # Local imports
-from .models import Brand, Club, Color, Competition, Kit, Season, Type_K
+from .models import Brand, Club, Competition, Kit, Season, Type_K
 
 logger = logging.getLogger(__name__)
 
@@ -347,101 +342,9 @@ def scrape_kit(slug: str, kit_id: str | None = None, use_proxy: bool = False) ->
                 logger.error(f"Error parsing kit page: {exc}")
                 raise
 
-            # Get or create team (handles name and slug changes)
-            logger.debug(f"Processing kit for team: {data.team_name} (slug: {data.team_slug})")
-            team = _handle_club_changes(data.team_slug, data.team_name, use_proxy)
-
-            # Get or create brand
-            brand = _get_or_create_brand(data.brand_slug)
-
-            # Get season
-            logger.debug("Getting season information...")
-            try:
-                season_text = data.season_text or slug
-                season = get_season(season_text)
-                logger.debug(f"Created/retrieved season: {season}")
-            except ValueError as e:
-                logger.error(f"Error getting season: {str(e)}")
-                return None
-
-            # Get kit type
-            type_k, _ = Type_K.objects.get_or_create(name=data.kit_type)
-            logger.debug(f"Kit type: {type_k}")
-
-            # Create or update kit
-            logger.debug("Creating/updating kit in database...")
-            with transaction.atomic():
-                kit_name = f"{data.team_name} {season} {type_k}"
-                logger.debug(f"Kit name: {kit_name}")
-
-                # Clean slug for database storage
-                clean_slug = slug.strip("/").split("/")[0]
-
-                # Check if kit already exists with this team, season, and type
-                existing_kit = Kit.objects.filter(
-                    team=team,
-                    season=season,
-                    type=type_k
-                ).first()
-
-                if existing_kit:
-                    # Kit already exists, but check if slug, kit_id, or design needs updating
-                    needs_update = False
-                    if existing_kit.slug != clean_slug:
-                        logger.debug(f"Updating slug: {existing_kit.slug} -> {clean_slug}")
-                        # Log slug changes
-                        with open('slug_changes.log', 'a', encoding='utf-8') as log:
-                            log.write(f"{timezone.now()}: SLUG UPDATE - Kit: {existing_kit.name} | Old: {existing_kit.slug} | New: {clean_slug}\n")
-                        existing_kit.slug = clean_slug
-                        needs_update = True
-
-                    if existing_kit.kit_id != kit_id:
-                        logger.debug(f"Updating kit_id: {existing_kit.kit_id} -> {kit_id}")
-                        existing_kit.kit_id = kit_id
-                        needs_update = True
-
-                    if existing_kit.design != data.design:
-                        logger.debug(f"Updating design: {existing_kit.design} -> {data.design}")
-                        existing_kit.design = data.design
-                        needs_update = True
-
-                    if needs_update:
-                        existing_kit.save()
-                    else:
-                        logger.debug(f"Kit already exists: {existing_kit.slug}")
-                    kit = existing_kit
-                    created = False
-                else:
-                    # Create new kit only if none exists
-                    kit, created = Kit.objects.update_or_create(
-                        slug=clean_slug,
-                        defaults={
-                            'name': kit_name,
-                            'team': team,
-                            'season': season,
-                            'type': type_k,
-                            'brand': brand,
-                            'rating': data.rating,
-                            'main_img_url': data.main_img_url,
-                            'design': data.design,
-                            'kit_id': kit_id
-                        }
-                    )
-
-                # Process competitions
-                logger.debug("Processing competitions...")
-                _process_competitions(kit, data.competitions_html, slug)
-
-                # Process colors if available
-                if data.colors_str:
-                    _process_colors(kit, data.colors_str)
-
-                if not created:
-                    logger.info(f"Updated existing kit: {kit}")
-                else:
-                    logger.info(f"Created new kit: {kit}")
-
-                return kit
+            # Use service layer to process kit data
+            kit = ScrapingService.process_kit_data(data, slug, kit_id, use_proxy)
+            return kit
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Network error scraping {slug}: {str(e)}")
@@ -459,50 +362,6 @@ def scrape_kit(slug: str, kit_id: str | None = None, use_proxy: bool = False) ->
             return None
 
 
-def _process_competitions(kit: Kit, competitions_html: str, slug: str) -> None:
-    """Helper function to process and add competitions to a kit."""
-    try:
-        # Check if the input is HTML with links or plain text
-        if "<a href=" in competitions_html:
-            # Parse HTML to extract competition names from links
-            from bs4 import BeautifulSoup
-            soup = BeautifulSoup(competitions_html, 'html.parser')
-            competition_links = soup.find_all("a")
-
-            for link in competition_links:
-                comp_name = link.text.strip()
-                comp_slug = link.get("href", "").replace("/", "")
-
-                if not comp_name or not comp_slug:
-                    continue
-
-                competition, _ = Competition.objects.get_or_create(
-                    slug=comp_slug,
-                    defaults={'name': comp_name}
-                )
-                kit.competition.add(competition)
-        else:
-            # Process plain text competitions
-            if COMPETITION_SEPARATOR in competitions_html:
-                competitions = competitions_html.split(COMPETITION_SEPARATOR)
-                for comp_name in competitions:
-                    comp_name = comp_name.strip()
-                    competition, _ = Competition.objects.get_or_create(
-                        name=comp_name,
-                        slug=slugify(f"{comp_name}{COMPETITION_SLUG_SUFFIX}")
-                    )
-                    kit.competition.add(competition)
-            else:
-                competition, _ = Competition.objects.get_or_create(
-                    name=competitions_html.strip(),
-                    slug=slugify(f"{competitions_html.strip()}{COMPETITION_SLUG_SUFFIX}")
-                )
-                kit.competition.add(competition)
-
-        kit.save()
-    except Exception as e:
-        print(Fore.RED + f'Error processing competitions for {kit}: {str(e)}')
-        _log_missing_item('kits_to_fix.txt', f"{slug} - Competition error: {str(e)} - {competitions_html}")
 
 
 def _log_missing_item(filename: str, content: str) -> None:
@@ -511,66 +370,6 @@ def _log_missing_item(filename: str, content: str) -> None:
         file.write(f"{content}\n")
 
 
-def _handle_club_changes(team_slug: str, team_name: str, use_proxy: bool = False) -> Club:
-    """
-    Handle club changes (name or slug) and return the correct club object.
-
-    Args:
-        team_slug (str): The slug from the scraped data
-        team_name (str): The name from the scraped data
-        use_proxy (bool): Whether to use proxy for scraping
-
-    Returns:
-        Club: The correct club object
-    """
-    from django.db import transaction
-
-    # First, try to find by slug
-    try:
-        team = Club.objects.get(slug=team_slug)
-        print(Fore.CYAN + f"[DEBUG] Found existing team by slug: {team}")
-
-        # Update team name if different
-        if team.name != team_name:
-            print(Fore.YELLOW + f"[DEBUG] Team name changed: {team.name} -> {team_name}")
-            team.name = team_name
-            team.save()
-
-        return team
-
-    except Club.DoesNotExist:
-        print(Fore.YELLOW + f"[DEBUG] Team {team_slug} not found by slug, checking by name...")
-
-        # Try to find by name (case-insensitive)
-        try:
-            team = Club.objects.get(name__iexact=team_name)
-            print(Fore.YELLOW + f"[DEBUG] Found existing team by name: {team}")
-
-            # The club exists but with a different slug - this means the club was renamed
-            print(Fore.YELLOW + f"[DEBUG] Club slug changed: {team.slug} -> {team_slug}")
-
-            # Log the slug change
-            with open(TEAM_SLUG_CHANGES_LOG, 'a', encoding='utf-8') as log:
-                log.write(f"{timezone.now()}: TEAM SLUG UPDATE - Name: {team_name} | Old Slug: {team.slug} | New Slug: {team_slug}\n")
-
-            # Update the slug
-            with transaction.atomic():
-                team.slug = team_slug
-                team.save()
-                print(Fore.GREEN + f"[DEBUG] Updated club slug: {team.slug}")
-
-            return team
-
-        except Club.DoesNotExist:
-            print(Fore.YELLOW + f"[DEBUG] Team {team_name} not found by name either, creating new team")
-
-            # Create new team
-            team = scrape_club_details(team_slug, use_proxy)
-            if not team:
-                print(Fore.RED + f'[DEBUG] Failed to scrape team {team_slug}')
-                raise ValueError(f"Failed to scrape team {team_slug}") from None
-
-            return team
 
 
 
@@ -1040,11 +839,15 @@ def scrape_kit_lite(
 
                     if competitions_cell:
                         competitions_html = str(competitions_cell)
-                        _process_competitions(kit, competitions_html, slug)
+                        from core.services.kits_service import KitsService
+
+                        KitsService.process_competitions(kit, competitions_html, slug)
 
                     # Process colors if available
                     if colors_data:
-                        _process_colors(kit, colors_data)
+                        from core.services.kits_service import KitsService
+
+                        KitsService.process_colors(kit, colors_data)
 
                     print(Fore.GREEN + f"Created new kit: {kit}")
                 else:
@@ -1321,29 +1124,3 @@ def scrape_latest_pages(
     return success_count, failure_count
 
 
-def _process_colors(kit: Kit, colors_str: str) -> None:
-    """Helper function to process and add colors to a kit."""
-    try:
-        # Format is typically "Primary / Secondary" or just "Primary"
-        colors = [c.strip() for c in colors_str.split(COLOR_SEPARATOR_SLASH.strip())]
-
-        if not colors:
-            return
-
-        # Process primary color
-        primary_color_name = colors[0]
-        primary_color, _ = Color.objects.get_or_create(name=primary_color_name)
-        kit.primary_color = primary_color
-
-        # Process secondary colors if any
-        if len(colors) > 1:
-            for color_name in colors[1:]:
-                if not color_name.strip():
-                    continue
-                secondary_color, _ = Color.objects.get_or_create(name=color_name.strip())
-                kit.secondary_color.add(secondary_color)
-
-        kit.save()
-    except Exception as e:
-        print(Fore.RED + f'Error processing colors for {kit}: {str(e)}')
-        _log_missing_item('kits_to_fix.txt', f"{kit.slug} - Color error: {str(e)} - {colors_str}")
