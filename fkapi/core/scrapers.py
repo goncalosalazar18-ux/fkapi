@@ -2,6 +2,7 @@
 import logging
 import time
 from contextlib import contextmanager
+from typing import Any
 
 # Third-party imports
 import requests
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://www.footballkitarchive.com"
 
 
-def build_kit_url(slug: str, kit_id: str = None) -> str:
+def build_kit_url(slug: str, kit_id: str | None = None) -> str:
     """
     Builds the complete URL for scraping a kit.
 
@@ -51,7 +52,7 @@ def build_kit_url(slug: str, kit_id: str = None) -> str:
 
 
 @contextmanager
-def db_connection():
+def db_connection() -> Any:
     try:
         yield
     finally:
@@ -74,7 +75,7 @@ def get_current_season() -> Season:
         raise Season.DoesNotExist("The 2024 season was not found") from e
 
 
-def get_season(season_slug: str, season_display: str = None) -> Season:
+def get_season(season_slug: str, season_display: str | None = None) -> Season:
     """
     Retrieves or creates a Season object using the full year from the slug.
 
@@ -226,7 +227,7 @@ def get_season_e(season_slug: str) -> Season:
     return get_season(season_slug)
 
 
-def scrape_kit(slug: str, kit_id: str = None, use_proxy: bool = False) -> Kit | None:
+def scrape_kit(slug: str, kit_id: str | None = None, use_proxy: bool = False) -> Kit | None:
     """
     Scrapes a kit from footballkitarchive.com using its slug and optional kit_id.
 

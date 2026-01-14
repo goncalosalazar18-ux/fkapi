@@ -3,13 +3,14 @@ import hashlib
 import os
 import re
 from contextlib import contextmanager
+from typing import Any
 
 # Third-party imports
 import requests
 from django.core.cache import cache
 from django.db import connection, transaction
 from django.db.models import Q
-from django.http import JsonResponse
+from django.http import HttpRequest, JsonResponse
 from django.shortcuts import get_object_or_404
 from ninja import NinjaAPI, Path, Query, Schema
 from ninja_apikey.security import APIKeyAuth
@@ -91,7 +92,7 @@ api = NinjaAPI(
 
 # Error handlers
 @api.exception_handler(Exception)
-def custom_exception_handler(request, exc):
+def custom_exception_handler(request: HttpRequest, exc: Exception) -> Any:
     return api.create_response(request, {"detail": str(exc)}, status=500)
 
 
@@ -110,7 +111,7 @@ def custom_exception_handler(request, exc):
     }
     ```
     """)
-def health_check(request):
+def health_check(request: HttpRequest) -> dict[str, Any]:
     """
     Check if the API and database are functioning correctly.
     """
@@ -124,7 +125,7 @@ def health_check(request):
 
 
 @contextmanager
-def db_connection():
+def db_connection() -> Any:
     """Context manager for database connections."""
     try:
         yield
@@ -132,12 +133,12 @@ def db_connection():
         connection.close()
 
 
-def _is_postgresql():
+def _is_postgresql() -> bool:
     """Check if the database is PostgreSQL."""
     return connection.vendor == "postgresql"
 
 
-def _search_filter(field, keyword):
+def _search_filter(field: str, keyword: str) -> Q:
     """Create a search filter that works with both PostgreSQL and SQLite."""
     if _is_postgresql():
         return Q(**{f"{field}__trigram_word_similar": keyword})
@@ -145,27 +146,12 @@ def _search_filter(field, keyword):
         return Q(**{f"{field}__icontains": keyword})
 
 
-def _unaccent_filter(field, value):
+def _unaccent_filter(field: str, value: str) -> Q:
     """Create an unaccent filter that works with both PostgreSQL and SQLite."""
     if _is_postgresql():
         return Q(**{f"{field}__unaccent__icontains": value})
     else:
         return Q(**{f"{field}__icontains": value})
-
-
-@api.get(
-    "/health",
-    summary="Health Check",
-    description="Check API health status",
-    tags=["Health"],
-)
-def health_check(request):
-    """Health check endpoint."""
-    try:
-        connection.ensure_connection()
-        return {"status": "healthy"}
-    except Exception:
-        return {"status": "unhealthy"}
 
 
 @api.get(
@@ -181,9 +167,9 @@ def health_check(request):
     tags=["Clubs"],
 )
 def search_clubs(
-    request,
+    request: HttpRequest,
     keyword: str = Query(..., description="Keyword to search for in club names and slugs", example="manchester"),
-):
+) -> list[ClubSerializer]:
     """
     Search for clubs using a keyword.
 
@@ -212,8 +198,8 @@ def search_clubs(
     tags=["Brands"],
 )
 def search_brands(
-    request, keyword: str = Query(..., description="Keyword to search for in brand names or slugs", example="adidas")
-):
+    request: HttpRequest, keyword: str = Query(..., description="Keyword to search for in brand names or slugs", example="adidas")
+) -> list[BrandJsonSchema]:
     """
     Search for brands using a keyword.
 
@@ -252,9 +238,9 @@ def search_brands(
     tags=["Competitions"],
 )
 def search_competitions(
-    request,
+    request: HttpRequest,
     keyword: str = Query(..., description="Keyword to search for in competition names or slugs", example="premier"),
-):
+) -> list[CompetitionJsonSchema]:
     """
     Search for competitions using a keyword.
 
@@ -296,10 +282,10 @@ def search_competitions(
     tags=["Kits"],
 )
 def get_kits(
-    request,
+    request: HttpRequest,
     club: int = Query(..., description="Club ID", example=1),
     season: int = Query(..., description="Season ID", example=1),
-):
+) -> list[KitSerializer]:
     """
     Get all kits for a club in a specific season.
 
@@ -327,7 +313,7 @@ def get_kits(
     """,
     tags=["Seasons"],
 )
-def get_seasons(request, id: int = Query(..., description="Club ID", example=1)):
+def get_seasons(request: HttpRequest, id: int = Query(..., description="Club ID", example=1)) -> list[SeasonSerializer]:
     """
     Get all available seasons for a club.
 
@@ -364,8 +350,8 @@ def get_seasons(request, id: int = Query(..., description="Club ID", example=1))
     tags=["Seasons"],
 )
 def search_seasons(
-    request, keyword: str = Query(..., description="Year or partial year to search for", example="2025")
-):
+    request: HttpRequest, keyword: str = Query(..., description="Year or partial year to search for", example="2025")
+) -> list[SeasonSerializer]:
     """
     Search for seasons by year.
 
@@ -457,7 +443,7 @@ def search_seasons(
     """,
     tags=["Kits"],
 )
-def get_kit_json(request, kit_id: int = Path(..., description="Kit ID", example=1)):
+def get_kit_json(request: HttpRequest, kit_id: int = Path(..., description="Kit ID", example=1)) -> KitJsonSchema:
     """
     Get detailed information for a specific kit.
 
@@ -544,7 +530,7 @@ def get_kit_json(request, kit_id: int = Path(..., description="Kit ID", example=
     """,
     tags=["Kits"],
 )
-def send_kit(request, kit_id: int = Path(..., description="Kit ID", example=1)):
+def send_kit(request: HttpRequest, kit_id: int = Path(..., description="Kit ID", example=1)) -> JsonResponse:
     """
     Send kit information to an external API.
 
@@ -664,7 +650,7 @@ def send_kit(request, kit_id: int = Path(..., description="Kit ID", example=1)):
     """,
     tags=["Kits"],
 )
-def search_kits(request, keyword: str = Query(None, description="Search query", example="Málaga 2003")):
+def search_kits(request: HttpRequest, keyword: str | None = Query(None, description="Search query", example="Málaga 2003")) -> list[KitSearchResult]:
     search_query = keyword
     if not search_query:
         return []
@@ -756,7 +742,7 @@ def search_kits(request, keyword: str = Query(None, description="Search query", 
     """,
     tags=["Testing"],
 )
-def test_search(request):
+def test_search(request: HttpRequest) -> JsonResponse:
     """
     Test endpoint to verify search functionality.
     """
@@ -849,7 +835,7 @@ def test_search(request):
     """,
     tags=["Kits"],
 )
-def get_random_kits(request, page: int = Query(1, description="Page number", ge=1), page_size: int = Query(20, description="Items per page", ge=1, le=100)):
+def get_random_kits(request: HttpRequest, page: int = Query(1, description="Page number", ge=1), page_size: int = Query(20, description="Items per page", ge=1, le=100)) -> dict[str, Any]:
     """
     Get random kits with pagination.
     """
@@ -938,7 +924,7 @@ def get_random_kits(request, page: int = Query(1, description="Page number", ge=
     """,
     tags=["Clubs"],
 )
-def get_random_clubs(request, page: int = Query(1, description="Page number", ge=1), page_size: int = Query(20, description="Items per page", ge=1, le=100)):
+def get_random_clubs(request: HttpRequest, page: int = Query(1, description="Page number", ge=1), page_size: int = Query(20, description="Items per page", ge=1, le=100)) -> dict[str, Any]:
     """
     Get random clubs with pagination.
     """
@@ -999,7 +985,7 @@ def get_random_clubs(request, page: int = Query(1, description="Page number", ge
 
 
 @api.get("/merge-suggestions/")
-def get_merge_suggestions(request, threshold: float = 0.70, limit: int = 50):
+def get_merge_suggestions(request: HttpRequest, threshold: float = 0.70, limit: int = 50) -> dict[str, Any]:
     """
     Get suggestions for merging duplicate clubs based on improved similarity algorithm.
     Filters out clubs with words like "femenino", "sub", "filial", etc.
@@ -1010,7 +996,7 @@ def get_merge_suggestions(request, threshold: float = 0.70, limit: int = 50):
 
     from django.db.models import Count
 
-    def normalize_name(name):
+    def normalize_name(name: str) -> str:
         """Normalize club name by removing common prefixes and suffixes"""
         name = name.lower().strip()
         original_name = name
@@ -1059,7 +1045,7 @@ def get_merge_suggestions(request, threshold: float = 0.70, limit: int = 50):
 
         return name
 
-    def remove_exclusion_words(name):
+    def remove_exclusion_words(name: str) -> str:
         """Remove exclusion words from name for comparison"""
         exclude_words = [
             "beleza",
@@ -1077,7 +1063,7 @@ def get_merge_suggestions(request, threshold: float = 0.70, limit: int = 50):
         filtered_words = [w for w in words if not any(ex in w for ex in exclude_words)]
         return " ".join(filtered_words).strip()
 
-    def calculate_similarity(name1, name2, logo1, logo2):
+    def calculate_similarity(name1: str, name2: str, logo1: str | None, logo2: str | None) -> float:
         """Calculate multiple similarity scores and combine them"""
         name1_lower = name1.lower()
         name2_lower = name2.lower()
@@ -1436,7 +1422,7 @@ def get_merge_suggestions(request, threshold: float = 0.70, limit: int = 50):
 
 
 @api.post("/merge-clubs/")
-def merge_clubs(request, source_id: int = Query(...), target_id: int = Query(...)):
+def merge_clubs(request: HttpRequest, source_id: int = Query(...), target_id: int = Query(...)) -> dict[str, Any]:
     """
     Merge two clubs. Moves all kits from source to target and deletes source.
     """
