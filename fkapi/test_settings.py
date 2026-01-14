@@ -98,6 +98,20 @@ STATIC_URL = 'static/'
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Cache configuration for tests (use locmem instead of Redis)
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake',
+    }
+}
+
+# Cache timeout settings
+CACHE_TIMEOUT_SHORT = 300  # 5 minutes
+CACHE_TIMEOUT_MEDIUM = 1800  # 30 minutes
+CACHE_TIMEOUT_LONG = 3600  # 1 hour
+CACHE_TIMEOUT_VERY_LONG = 86400  # 24 hours
+
 # Test-specific settings
 API_RATE_LIMIT = {
     'RATE': '100/hour',
