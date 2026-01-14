@@ -5,6 +5,21 @@ from dataclasses import dataclass
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 
+from .constants import (
+    FACT_TABLE_CLASS,
+    FIELD_BRAND,
+    FIELD_COLORS,
+    FIELD_DESIGN,
+    FIELD_KIT_TYPE,
+    FIELD_LEAGUE,
+    FIELD_SEASON,
+    FIELD_TEAM,
+    FIELD_TYPE,
+    RATING_DETAILS_ID,
+    RATING_SPAN_ID,
+    TOP_IMAGE_CLASS,
+)
+
 
 @dataclass(frozen=True)
 class FactTable:
@@ -43,7 +58,7 @@ class KitPageData:
 
 def extract_fact_table(soup: BeautifulSoup) -> FactTable:
     """Extract the fact table and return a normalized helper object."""
-    table = soup.find("table", class_="fact-table")
+    table = soup.find("table", class_=FACT_TABLE_CLASS)
     if table is None:
         raise ValueError("Kit fact table not found in HTML")
 
@@ -69,7 +84,7 @@ def parse_kit_page(soup: BeautifulSoup) -> KitPageData:
     fact_table = extract_fact_table(soup)
 
     # Team
-    team_cell = fact_table.get_value_cell("team")
+    team_cell = fact_table.get_value_cell(FIELD_TEAM)
     if team_cell is None:
         raise ValueError("Team data not found")
     team_name = team_cell.get_text(strip=True)
@@ -79,12 +94,12 @@ def parse_kit_page(soup: BeautifulSoup) -> KitPageData:
     team_slug = team_link["href"].replace("/", "")
 
     # Season
-    season_text = fact_table.get_text("season")
+    season_text = fact_table.get_text(FIELD_SEASON)
 
     # Rating
     rating = 0.0
-    rating_span = soup.find("span", id="rating")
-    rating_details = soup.find("span", id="rating-details-no")
+    rating_span = soup.find("span", id=RATING_SPAN_ID)
+    rating_details = soup.find("span", id=RATING_DETAILS_ID)
     if rating_span and rating_span.text.strip() and not rating_details:
         try:
             rating = float(rating_span.text.strip())
@@ -92,7 +107,7 @@ def parse_kit_page(soup: BeautifulSoup) -> KitPageData:
             rating = 0.0
 
     # Main Image
-    main_img = soup.find("img", class_="top-image")
+    main_img = soup.find("img", class_=TOP_IMAGE_CLASS)
     if not main_img:
         raise ValueError("Main image not found")
     main_img_url = main_img.get("data-src") or main_img.get("src")
@@ -100,12 +115,12 @@ def parse_kit_page(soup: BeautifulSoup) -> KitPageData:
         raise ValueError("Main image URL not found")
 
     # Kit Type
-    kit_type = fact_table.get_text("kit type") or fact_table.get_text("type")
+    kit_type = fact_table.get_text(FIELD_KIT_TYPE) or fact_table.get_text(FIELD_TYPE)
     if not kit_type:
         raise ValueError("Kit type not found")
 
     # Brand
-    brand_cell = fact_table.get_value_cell("brand")
+    brand_cell = fact_table.get_value_cell(FIELD_BRAND)
     if not brand_cell:
         raise ValueError("Brand not found")
     brand_name = brand_cell.get_text(strip=True)
@@ -115,13 +130,13 @@ def parse_kit_page(soup: BeautifulSoup) -> KitPageData:
     brand_slug = brand_link["href"].replace("/", "")
 
     # Design
-    design = fact_table.get_text("design")
+    design = fact_table.get_text(FIELD_DESIGN)
 
     # Colors
-    colors_str = fact_table.get_text("colors")
+    colors_str = fact_table.get_text(FIELD_COLORS)
 
     # Competitions (League)
-    comp_cell = fact_table.get_value_cell("league")
+    comp_cell = fact_table.get_value_cell(FIELD_LEAGUE)
     if not comp_cell:
         raise ValueError("Competitions (League) not found")
     competitions_html = str(comp_cell)

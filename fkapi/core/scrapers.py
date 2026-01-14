@@ -14,6 +14,27 @@ from django.db import connection, transaction
 from django.utils import timezone
 from django.utils.text import slugify
 
+from core.constants import (
+    BASE_URL,
+    BRAND_SLUG_SUFFIX,
+    COLLECTION_CONTAINER_CLASS,
+    COLOR_SEPARATOR_SLASH,
+    COMPETITION_SEPARATOR,
+    COMPETITION_SLUG_SUFFIX,
+    CURRENT_CENTURY,
+    CURRENT_SEASON_YEAR,
+    DEFAULT_LOGO_URL,
+    HTTP_STATUS_FORBIDDEN,
+    KIT_CLASS,
+    KIT_CONTAINER_CLASS,
+    KIT_SEASON_CLASS,
+    KITS_TO_FIX_FILE,
+    LATEST_PAGE_URL,
+    MAX_RETRIES,
+    RETRY_DELAY,
+    SECTION_DETAILS_CLASS,
+    TEAM_SLUG_CHANGES_LOG,
+)
 from core.http import http_get
 from core.parsers import extract_fact_table, parse_kit_page
 
@@ -21,8 +42,6 @@ from core.parsers import extract_fact_table, parse_kit_page
 from .models import Brand, Club, Color, Competition, Kit, Season, Type_K
 
 logger = logging.getLogger(__name__)
-
-BASE_URL = "https://www.footballkitarchive.com"
 
 
 def build_kit_url(slug: str, kit_id: str | None = None) -> str:
@@ -70,9 +89,9 @@ def get_current_season() -> Season:
         Season.DoesNotExist: If the 2024 season does not exist
     """
     try:
-        return Season.objects.get(first_year='2024')
+        return Season.objects.get(first_year=CURRENT_SEASON_YEAR)
     except Season.DoesNotExist as e:
-        raise Season.DoesNotExist("The 2024 season was not found") from e
+        raise Season.DoesNotExist(f"The {CURRENT_SEASON_YEAR} season was not found") from e
 
 
 def get_season(season_slug: str, season_display: str | None = None) -> Season:
@@ -96,19 +115,18 @@ def get_season(season_slug: str, season_display: str | None = None) -> Season:
             second_year_short = two_digit_year_match.group(2)
 
             # Assume 2000s for 2-digit years (24 -> 2024)
-            current_century = "20"
-            first_year = current_century + first_year_short
+            first_year = CURRENT_CENTURY + first_year_short
 
             if second_year_short:
                 # Determine century for second year
                 first_year_int = int(first_year)
-                second_year_int = int(current_century + second_year_short)
+                second_year_int = int(CURRENT_CENTURY + second_year_short)
 
                 if second_year_int < first_year_int:
                     # Crossed century boundary
-                    century = str(int(current_century) + 1)
+                    century = str(int(CURRENT_CENTURY) + 1)
                 else:
-                    century = current_century
+                    century = CURRENT_CENTURY
 
                 second_year = century + second_year_short
                 year_str = f"{first_year}-{second_year_short}"
@@ -243,7 +261,7 @@ def scrape_kit(slug: str, kit_id: str | None = None, use_proxy: bool = False) ->
         requests.exceptions.RequestException: For network-related errors
         ValueError: For invalid data in the response
     """
-    max_retries = 3
+    max_retries = MAX_RETRIES
     retry_count = 0
 
     while retry_count < max_retries:
@@ -258,11 +276,11 @@ def scrape_kit(slug: str, kit_id: str | None = None, use_proxy: bool = False) ->
             logger.debug(f"Response status code: {response.status_code}")
 
             # Handle HTTP errors
-            if response.status_code == 403:
+            if response.status_code == HTTP_STATUS_FORBIDDEN:
                 logger.warning("Received 403 status code. Retrying with a new proxy.")
                 use_proxy = True
                 retry_count += 1
-                time.sleep(2)
+                time.sleep(RETRY_DELAY)
                 continue
             elif response.status_code == 404:
                 logger.warning(f"Received 404 status code for {slug}. This could be network issue or page moved.")
@@ -294,7 +312,7 @@ def scrape_kit(slug: str, kit_id: str | None = None, use_proxy: bool = False) ->
                     logger.warning(f"Got 404 status but found fact table for {slug}. Likely network issue, retrying...")
                     retry_count += 1
                     if retry_count < max_retries:
-                        time.sleep(2)
+                        time.sleep(RETRY_DELAY)
                         continue
                     else:
                         logger.error(f"Max retries reached for {slug} with 404 status")
@@ -312,7 +330,7 @@ def scrape_kit(slug: str, kit_id: str | None = None, use_proxy: bool = False) ->
                         kit_id = extracted_kit_id
                         retry_count += 1
                         if retry_count < max_retries:
-                            time.sleep(2)
+                            time.sleep(RETRY_DELAY)
                             continue
                         else:
                             logger.error(f"Max retries reached for {slug}")
@@ -430,7 +448,7 @@ def scrape_kit(slug: str, kit_id: str | None = None, use_proxy: bool = False) ->
             retry_count += 1
             if retry_count == max_retries:
                 logger.error(f"Max retries ({max_retries}) reached. Giving up.")
-                _log_missing_item('kits_to_fix.txt', f"{slug} - Network error: {str(e)}")
+                _log_missing_item(KITS_TO_FIX_FILE, f"{slug} - Network error: {str(e)}")
                 return None
             logger.warning(f"Retrying in 2 seconds... (attempt {retry_count + 1}/{max_retries})")
             time.sleep(2)
@@ -465,19 +483,19 @@ def _process_competitions(kit: Kit, competitions_html: str, slug: str) -> None:
                 kit.competition.add(competition)
         else:
             # Process plain text competitions
-            if "·" in competitions_html:
-                competitions = competitions_html.split("·")
+            if COMPETITION_SEPARATOR in competitions_html:
+                competitions = competitions_html.split(COMPETITION_SEPARATOR)
                 for comp_name in competitions:
                     comp_name = comp_name.strip()
                     competition, _ = Competition.objects.get_or_create(
                         name=comp_name,
-                        slug=slugify(f"{comp_name}-kits")
+                        slug=slugify(f"{comp_name}{COMPETITION_SLUG_SUFFIX}")
                     )
                     kit.competition.add(competition)
             else:
                 competition, _ = Competition.objects.get_or_create(
                     name=competitions_html.strip(),
-                    slug=slugify(f"{competitions_html.strip()}-kits")
+                    slug=slugify(f"{competitions_html.strip()}{COMPETITION_SLUG_SUFFIX}")
                 )
                 kit.competition.add(competition)
 
@@ -532,7 +550,7 @@ def _handle_club_changes(team_slug: str, team_name: str, use_proxy: bool = False
             print(Fore.YELLOW + f"[DEBUG] Club slug changed: {team.slug} -> {team_slug}")
 
             # Log the slug change
-            with open('team_slug_changes.log', 'a', encoding='utf-8') as log:
+            with open(TEAM_SLUG_CHANGES_LOG, 'a', encoding='utf-8') as log:
                 log.write(f"{timezone.now()}: TEAM SLUG UPDATE - Name: {team_name} | Old Slug: {team.slug} | New Slug: {team_slug}\n")
 
             # Update the slug
@@ -599,7 +617,7 @@ def scrape_competition(slug: str, use_proxy: bool = False) -> Competition | None
         requests.exceptions.RequestException: For network-related errors
         ValueError: For invalid data in the response
     """
-    max_retries = 3
+    max_retries = MAX_RETRIES
     retry_count = 0
 
     while retry_count < max_retries:
@@ -658,7 +676,7 @@ def scrape_club_details(slug: str, use_proxy: bool = False) -> Club | None:
         requests.exceptions.RequestException: For network-related errors
         ValueError: For invalid data in the response
     """
-    max_retries = 3
+    max_retries = MAX_RETRIES
     retry_count = 0
 
     while retry_count < max_retries:
@@ -713,7 +731,7 @@ def scrape_club_details(slug: str, use_proxy: bool = False) -> Club | None:
 
                 except Exception as e:
                     print(Fore.YELLOW + f'Logo error for {club}: {str(e)}. Using default.')
-                    club.logo = f"{BASE_URL}/static/logos/not_found.png"
+                    club.logo = DEFAULT_LOGO_URL
 
                 club.save()
 
@@ -750,7 +768,7 @@ def scrape_whole_club(club: Club) -> Club | None:
         requests.exceptions.RequestException: For network-related errors
         ValueError: For invalid data in the response
     """
-    max_retries = 3
+    max_retries = MAX_RETRIES
     retry_count = 0
 
     while retry_count < max_retries:
@@ -772,7 +790,7 @@ def scrape_whole_club(club: Club) -> Club | None:
             if not container:
                 raise ValueError("Archive content container not found")
 
-            seasons_container = container.find_all("div", class_="collection-container")
+            seasons_container = container.find_all("div", class_=COLLECTION_CONTAINER_CLASS)
             if not seasons_container:
                 print(Fore.YELLOW + f"No seasons found for {club.name}")
                 return club
@@ -797,7 +815,7 @@ def scrape_whole_club(club: Club) -> Club | None:
                         continue
 
                     # Get brand from section details
-                    details = season_container.find("ul", class_="section-details")
+                    details = season_container.find("ul", class_=SECTION_DETAILS_CLASS)
                     if not details or not details.find_all("a"):
                         print(Fore.YELLOW + f"No brand found for season {season_year}")
                         continue
@@ -812,7 +830,7 @@ def scrape_whole_club(club: Club) -> Club | None:
                         continue
 
                     # Process each kit in the season
-                    kits_lite = season_container.find_all("div", class_="kit")
+                    kits_lite = season_container.find_all("div", class_=KIT_CLASS)
                     if not kits_lite:
                         print(Fore.YELLOW + f"No kits found for season {season_year}")
                         continue
@@ -855,15 +873,15 @@ def _get_or_create_brand(brand_slug: str) -> Brand | None:
         except Exception as e:
             # Format brand name from slug by removing -kits suffix and formatting
             brand_name = brand_slug
-            if brand_name.endswith("-kits"):
-                brand_name = brand_name[:-5]  # Remove -kits suffix
+            if brand_name.endswith(BRAND_SLUG_SUFFIX):
+                brand_name = brand_name[: -len(BRAND_SLUG_SUFFIX)]  # Remove -kits suffix
             brand_name = brand_name.replace("-", " ").strip().title()
 
             print(f"Logo error for {brand_name}: {str(e)}. Using default.")
             brand = Brand.objects.create(
                 name=brand_name,
                 slug=brand_slug,
-                logo=f"{BASE_URL}/static/logos/not_found.png"
+                logo=DEFAULT_LOGO_URL
             )
             print(f"Created brand: {brand.name}")
             return brand
@@ -884,7 +902,7 @@ def _process_kit(kit_element: BeautifulSoup, club: Club, season: Season, brand: 
             return None
 
         # Get kit type
-        type_text = kit_element.find("div", class_="kit-season")
+        type_text = kit_element.find("div", class_=KIT_SEASON_CLASS)
         if not type_text:
             return None
         print(Fore.CYAN + f"[DEBUG] type_text: {type_text.text}")
@@ -929,7 +947,7 @@ def scrape_kit_lite(
         requests.exceptions.RequestException: For network-related errors
         ValueError: For invalid data in the response
     """
-    max_retries = 3
+    max_retries = MAX_RETRIES
     retry_count = 0
 
     while retry_count < max_retries:
@@ -938,11 +956,11 @@ def scrape_kit_lite(
             response = http_get(build_kit_url(slug), use_proxy=use_proxy)
 
             # Handle HTTP errors
-            if response.status_code == 403:
+            if response.status_code == HTTP_STATUS_FORBIDDEN:
                 print(Fore.RED + "Received 403 status code. Retrying with a new proxy.")
                 use_proxy = True
                 retry_count += 1
-                time.sleep(2)
+                time.sleep(RETRY_DELAY)
                 continue
             response.raise_for_status()
 
@@ -1038,7 +1056,7 @@ def scrape_kit_lite(
             print(Fore.RED + f"Network error scraping kit {slug}: {str(e)}")
             retry_count += 1
             if retry_count == max_retries:
-                _log_missing_item('kits_to_fix.txt', f"{slug} - Network error: {str(e)}")
+                _log_missing_item(KITS_TO_FIX_FILE, f"{slug} - Network error: {str(e)}")
                 return None
             time.sleep(2)
 
@@ -1063,7 +1081,7 @@ def scrape_brand(slug: str, use_proxy: bool = False) -> Brand | None:
         requests.exceptions.RequestException: For network-related errors
         ValueError: For invalid data in the response
     """
-    max_retries = 3
+    max_retries = MAX_RETRIES
     retry_count = 0
 
     while retry_count < max_retries:
@@ -1153,30 +1171,30 @@ def scrape_lastest(page: int = 1, use_proxy: bool = False) -> bool:
         requests.exceptions.RequestException: For network-related errors
         ValueError: For invalid data in the response
     """
-    max_retries = 3
+    max_retries = MAX_RETRIES
     retry_count = 0
 
     while retry_count < max_retries:
         try:
             # Make request
-            response = http_get(f"{BASE_URL}/latest/?p={page}", use_proxy=use_proxy)
+            response = http_get(f"{BASE_URL}{LATEST_PAGE_URL}{page}", use_proxy=use_proxy)
 
             # Handle HTTP errors
-            if response.status_code == 403:
+            if response.status_code == HTTP_STATUS_FORBIDDEN:
                 print(Fore.RED + "Received 403 status code. Retrying with a new proxy.")
                 use_proxy = True
                 retry_count += 1
-                time.sleep(2)
+                time.sleep(RETRY_DELAY)
                 continue
             response.raise_for_status()
 
             # Parse HTML
             soup = BeautifulSoup(response.text, 'html.parser')
-            kit_container = soup.find("div", class_="kit-container")
+            kit_container = soup.find("div", class_=KIT_CONTAINER_CLASS)
             if not kit_container:
                 raise ValueError("Kit container not found")
 
-            kits = kit_container.find_all("div", class_="kit")
+            kits = kit_container.find_all("div", class_=KIT_CLASS)
             if not kits:
                 print(Fore.YELLOW + f"No kits found on page {page}")
                 return True  # Consider empty page as success
@@ -1307,7 +1325,7 @@ def _process_colors(kit: Kit, colors_str: str) -> None:
     """Helper function to process and add colors to a kit."""
     try:
         # Format is typically "Primary / Secondary" or just "Primary"
-        colors = [c.strip() for c in colors_str.split('/')]
+        colors = [c.strip() for c in colors_str.split(COLOR_SEPARATOR_SLASH.strip())]
 
         if not colors:
             return
