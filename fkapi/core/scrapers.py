@@ -29,6 +29,13 @@ from core.constants import (
     RETRY_DELAY,
     SECTION_DETAILS_CLASS,
 )
+from core.exceptions import (
+    ClubNotFoundError,
+    InvalidSeasonError,
+    KitNotFoundError,
+    RateLimitExceededError,
+    ScrapingError,
+)
 from core.http import http_get
 from core.parsers import extract_fact_table, parse_kit_page
 from core.services.scraping_service import ScrapingService
@@ -210,7 +217,7 @@ def get_season(season_slug: str, season_display: str | None = None) -> Season:
             )
 
     except Exception as e:
-        raise ValueError(f"Error processing season from slug '{season_slug}': {str(e)}") from e
+        raise InvalidSeasonError(season_slug, f"Error processing season from slug '{season_slug}': {str(e)}") from e
 
 
 def get_season_e(season_slug: str) -> Season:
@@ -272,6 +279,8 @@ def scrape_kit(slug: str, kit_id: str | None = None, use_proxy: bool = False) ->
 
             # Handle HTTP errors
             if response.status_code == HTTP_STATUS_FORBIDDEN:
+                if retry_count == max_retries - 1:
+                    raise RateLimitExceededError("Rate limit exceeded while scraping kit")
                 logger.warning("Received 403 status code. Retrying with a new proxy.")
                 use_proxy = True
                 retry_count += 1
@@ -292,12 +301,12 @@ def scrape_kit(slug: str, kit_id: str | None = None, use_proxy: bool = False) ->
             page_not_found_text = soup.find(string=lambda text: text and "The requested page could not be found" in text)
             if page_not_found_text:
                 logger.warning(f"Page moved: Kit {slug} - 'The requested page could not be found'")
-                return None
+                raise KitNotFoundError(slug, f"Kit not found: {slug}")
 
             # Check for 404 Not Found in h1 tag (actual page not found)
             if soup.find("h1", string="404 Not Found"):
                 logger.warning(f"404 Not Found: Kit {slug} does not exist")
-                return None
+                raise KitNotFoundError(slug, f"Kit not found: {slug}")
 
             # If we got a 404 status but the page content looks normal, it might be a network issue
             if response.status_code == 404:
@@ -333,7 +342,7 @@ def scrape_kit(slug: str, kit_id: str | None = None, use_proxy: bool = False) ->
                     else:
                         # No new format available, probably actually moved
                         logger.warning(f"No new URL format available for {slug}. Page likely moved.")
-                        return None
+                        raise KitNotFoundError(slug, f"Kit not found: {slug}") from None
 
             # Parse the page using our helper
             try:
@@ -486,9 +495,10 @@ def scrape_club_details(slug: str, use_proxy: bool = False) -> Club | None:
             response = http_get(f"{BASE_URL}/{slug}", use_proxy=use_proxy)
 
             # Handle HTTP errors
-            if response.status_code in [403, 404]:
-                raise requests.exceptions.HTTPError(
-                    f"Received {response.status_code} status code")
+            if response.status_code == 403:
+                raise RateLimitExceededError("Rate limit exceeded while scraping club")
+            elif response.status_code == 404:
+                raise ClubNotFoundError(slug, f"Club not found: {slug}")
             response.raise_for_status()
 
             # Parse HTML
@@ -578,9 +588,10 @@ def scrape_whole_club(club: Club) -> Club | None:
             response = http_get(f"{BASE_URL}/{club.slug}", use_proxy=True)
 
             # Handle HTTP errors
-            if response.status_code in [403, 404]:
-                raise requests.exceptions.HTTPError(
-                    f"Received {response.status_code} status code")
+            if response.status_code == 403:
+                raise RateLimitExceededError("Rate limit exceeded while scraping club")
+            elif response.status_code == 404:
+                raise ClubNotFoundError(club.slug, f"Club not found: {club.slug}")
             response.raise_for_status()
 
             # Parse HTML
@@ -893,9 +904,10 @@ def scrape_brand(slug: str, use_proxy: bool = False) -> Brand | None:
             response = http_get(f"{BASE_URL}/{slug}", use_proxy=use_proxy)
 
             # Handle HTTP errors
-            if response.status_code in [403, 404]:
-                print(Fore.RED + f"Network error scraping brand {slug}: Received {response.status_code} status code")
-                return None
+            if response.status_code == 403:
+                raise RateLimitExceededError("Rate limit exceeded while scraping brand")
+            elif response.status_code == 404:
+                raise ScrapingError(f"Brand not found: {slug}", slug)
             response.raise_for_status()
 
             # Parse HTML

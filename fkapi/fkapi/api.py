@@ -11,11 +11,17 @@ from django.core.cache import cache
 from django.db import connection, transaction
 from django.db.models import Q
 from django.http import HttpRequest, JsonResponse
-from django.shortcuts import get_object_or_404
 from ninja import NinjaAPI, Path, Query, Schema
 from ninja_apikey.security import APIKeyAuth
 
 # Local imports
+from core.exceptions import (
+    ClubNotFoundError,
+    InvalidSeasonError,
+    KitNotFoundError,
+    RateLimitExceededError,
+    ScrapingError,
+)
 from core.models import Brand, Club, Competition, Kit, Season
 from core.serializers import (
     BrandJsonSchema,
@@ -91,8 +97,24 @@ api = NinjaAPI(
 
 
 # Error handlers
+@api.exception_handler(ScrapingError)
+def scraping_error_handler(request: HttpRequest, exc: ScrapingError) -> Any:
+    """Handle scraping-related errors."""
+    if isinstance(exc, KitNotFoundError):
+        return api.create_response(request, {"detail": str(exc)}, status=404)
+    elif isinstance(exc, ClubNotFoundError):
+        return api.create_response(request, {"detail": str(exc)}, status=404)
+    elif isinstance(exc, InvalidSeasonError):
+        return api.create_response(request, {"detail": str(exc)}, status=400)
+    elif isinstance(exc, RateLimitExceededError):
+        return api.create_response(request, {"detail": str(exc)}, status=403)
+    else:
+        return api.create_response(request, {"detail": str(exc)}, status=500)
+
+
 @api.exception_handler(Exception)
 def custom_exception_handler(request: HttpRequest, exc: Exception) -> Any:
+    """Handle all other exceptions."""
     return api.create_response(request, {"detail": str(exc)}, status=500)
 
 
@@ -393,9 +415,12 @@ def get_seasons(request: HttpRequest, id: int = Query(..., description="Club ID"
         List[SeasonSerializer]: List of seasons sorted by year (descending)
 
     Raises:
-        Club.DoesNotExist: If the club with the given ID is not found
+        ClubNotFoundError: If the club with the given ID is not found
     """
-    club = Club.objects.get(id=id)
+    try:
+        club = Club.objects.get(id=id)
+    except Club.DoesNotExist as e:
+        raise ClubNotFoundError(f"club-{id}", f"Club with ID {id} not found") from e
     kits = Kit.objects.filter(team=club).select_related("season").distinct("season")
     seasons = sorted([kit.season for kit in kits], key=lambda x: x.year, reverse=True)
     return seasons
@@ -523,9 +548,12 @@ def get_kit_json(request: HttpRequest, kit_id: int = Path(..., description="Kit 
         KitJsonSchema: Detailed kit information
 
     Raises:
-        Http404: If the kit with the given ID is not found
+        KitNotFoundError: If the kit with the given ID is not found
     """
-    kit = get_object_or_404(Kit, id=kit_id)
+    try:
+        kit = Kit.objects.get(id=kit_id)
+    except Kit.DoesNotExist as e:
+        raise KitNotFoundError(f"kit-{kit_id}", f"Kit with ID {kit_id} not found") from e
     competition_logo_default = "https://www.footballkitarchive.com/static/logos/not_found.png"
 
     # Prepare primary color if available
@@ -610,11 +638,13 @@ def send_kit(request: HttpRequest, kit_id: int = Path(..., description="Kit ID",
         JsonResponse: Success message and API response or error details
 
     Raises:
-        Http404: If the kit is not found
+        KitNotFoundError: If the kit is not found
         RequestException: If there's an error sending data to the external API
     """
     try:
         kit = Kit.objects.get(id=kit_id)
+    except Kit.DoesNotExist as e:
+        raise KitNotFoundError(f"kit-{kit_id}", f"Kit with ID {kit_id} not found") from e
         competition_logo_default = "https://www.footballkitarchive.com/static/logos/not_found.png"
         formatted_competitions = [
             CompetitionJsonSchema(
@@ -687,8 +717,6 @@ def send_kit(request: HttpRequest, kit_id: int = Path(..., description="Kit ID",
         response.raise_for_status()
 
         return JsonResponse({"message": "Kit sent successfully", "response": response.json()})
-    except Kit.DoesNotExist:
-        return JsonResponse({"error": "Kit not found"}, status=404)
     except requests.RequestException as e:
         return JsonResponse({"error": f"Error sending data to the API: {str(e)}"}, status=500)
 
@@ -1532,6 +1560,6 @@ def merge_clubs(request: HttpRequest, source_id: int = Query(...), target_id: in
             },
         }
     except Club.DoesNotExist as e:
-        return {"success": False, "error": f"Club not found: {str(e)}"}
+        raise ClubNotFoundError(f"club-{source_id if 'source_id' in locals() else target_id}", f"Club not found: {str(e)}") from e
     except Exception as e:
         return {"success": False, "error": str(e)}

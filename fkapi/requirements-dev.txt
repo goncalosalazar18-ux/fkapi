@@ -2,3 +2,6 @@ ruff
 pytest
 pytest-django
 django-debug-toolbar
+pytest-cov
+coverage
+codecov
