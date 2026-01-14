@@ -151,8 +151,8 @@ python manage.py migrate
 # Create migrations
 python manage.py makemigrations
 
-# Collect static files
-python manage.py collectstatic
+# Note: We do not serve static files
+# Images are stored as URLs pointing to footballkitarchive.com
 
 # Run scraping command
 python manage.py scrape_brand adidas

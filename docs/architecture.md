@@ -46,10 +46,13 @@ This document provides a high-level overview of the Football Kit Archive API arc
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                    Data Storage Layer                        │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │  PostgreSQL  │  │    Redis     │  │   Static     │     │
-│  │   Database   │  │    Cache     │  │    Files     │     │
-│  └──────────────┘  └──────────────┘  └──────────────┘     │
+│  ┌──────────────┐  ┌──────────────┐                       │
+│  │  PostgreSQL  │  │    Redis     │                       │
+│  │   Database   │  │    Cache     │                       │
+│  └──────────────┘  └──────────────┘                       │
+│                                                             │
+│  Note: Images are stored as URLs pointing to               │
+│  footballkitarchive.com, not served locally                │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -105,10 +108,10 @@ This document provides a high-level overview of the Football Kit Archive API arc
 - Stores API responses and search results
 - Cache invalidation via Django signals
 
-#### Static Files
-- Images (kit photos, logos)
-- CSS, JavaScript (if applicable)
-- Served via Django static files or CDN
+#### External Image URLs
+- Images (kit photos, logos) are stored as URLs pointing to footballkitarchive.com
+- We do not host or serve static files
+- All image URLs reference the source website directly
 
 ## Data Flow
 

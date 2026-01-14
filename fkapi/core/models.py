@@ -192,7 +192,7 @@ class Kit(models.Model):
         brand: Manufacturer/brand of the kit (required)
         main_img_url: URL to main kit image (required)
         rating: User rating (0.00-10.00)
-        fh_link: Link to FootballHistory.com (optional)
+        fh_link: Link to FootyHeadlines.com (optional)
         web_updated: Last update time from source website (optional)
         last_updated: Last update time in database (auto-updated)
         primary_color: Primary color of the kit (optional)
