@@ -40,6 +40,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'core.middleware.rate_limit_middleware',
+    'core.middleware.performance_monitoring_middleware',
 ]
 
 ROOT_URLCONF = 'fkapi.urls'

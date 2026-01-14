@@ -107,7 +107,9 @@ def custom_exception_handler(request: HttpRequest, exc: Exception) -> Any:
     ```json
     {
         "status": "healthy",
-        "timestamp": "2026-01-13T12:00:00Z"
+        "timestamp": "2026-01-13T12:00:00Z",
+        "database": "connected",
+        "cache": "connected"
     }
     ```
     """)
@@ -116,12 +118,78 @@ def health_check(request: HttpRequest) -> dict[str, Any]:
     Check if the API and database are functioning correctly.
     """
     from datetime import datetime
+    
+    health_status = {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+    }
+    
     try:
-        # Simple database check
         Club.objects.count()
-        return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+        health_status["database"] = "connected"
     except Exception as e:
-        return api.create_response(request, {"status": "unhealthy", "error": str(e)}, status=503)
+        health_status["status"] = "unhealthy"
+        health_status["database"] = "disconnected"
+        health_status["error"] = str(e)
+        return api.create_response(request, health_status, status=503)
+    
+    try:
+        cache.set("health_check_test", "ok", 10)
+        cache.get("health_check_test")
+        health_status["cache"] = "connected"
+    except Exception as e:
+        health_status["cache"] = "disconnected"
+        health_status["cache_error"] = str(e)
+    
+    return health_status
+
+
+@api.get("/metrics", summary="API Usage Metrics", tags=["System"], description="""
+    Get API usage statistics and performance metrics.
+
+    **Response:**
+    - `200 OK`: Returns API usage statistics
+
+    **Example Response:**
+    ```json
+    {
+        "endpoints": {
+            "GET /api/kits": {
+                "count": 150,
+                "avg_duration": 0.234,
+                "avg_queries": 3.2,
+                "status_codes": {"200": 148, "404": 2}
+            }
+        }
+    }
+    ```
+    """)
+def get_metrics(request: HttpRequest) -> dict[str, Any]:
+    """
+    Get API usage statistics and performance metrics.
+    """
+    from collections import defaultdict
+    
+    stats_key = 'api_usage_stats'
+    stats = cache.get(stats_key, {})
+    
+    metrics = {
+        "endpoints": {},
+    }
+    
+    for endpoint, data in stats.items():
+        count = data.get('count', 0)
+        total_duration = data.get('total_duration', 0.0)
+        total_queries = data.get('total_queries', 0)
+        
+        metrics["endpoints"][endpoint] = {
+            "count": count,
+            "avg_duration": round(total_duration / count, 3) if count > 0 else 0.0,
+            "avg_queries": round(total_queries / count, 2) if count > 0 else 0,
+            "status_codes": dict(data.get('status_codes', {})),
+        }
+    
+    return metrics
 
 
 @contextmanager
