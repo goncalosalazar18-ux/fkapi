@@ -4,7 +4,6 @@ import threading
 import time
 
 from colorama import Fore
-from django.core.management import call_command
 from django.core.management.base import BaseCommand
 
 from core.models import Club
@@ -28,11 +27,6 @@ class Command(BaseCommand):
             help='Page number to end scraping at'
         )
         parser.add_argument(
-            '--retry-failed',
-            action='store_true',
-            help='Retry scraping clubs that previously failed'
-        )
-        parser.add_argument(
             '--workers',
             type=int,
             default=4,
@@ -48,14 +42,8 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         start_page = options['start_page']
         end_page = options['end_page']
-        retry_failed = options['retry_failed']
         workers = options['workers']
         delay = options['delay']
-
-        # If retrying failed clubs
-        if retry_failed:
-            self.retry_failed_clubs()
-            return
 
         # Determine direction and create page range
         if start_page <= end_page:
@@ -72,11 +60,7 @@ class Command(BaseCommand):
         print(Fore.CYAN + f"Total pages to process: {len(page_range)}")
         print(Fore.CYAN + f"Using {workers} workers with {delay}s delay between pages")
 
-        # First fix any missing clubs
-        print(Fore.CYAN + "Fixing missing clubs...")
-        call_command('fix_missing_clubs')
-
-        # Then scrape latest pages with workers
+        # Scrape latest pages with workers
         print(Fore.CYAN + "Scraping latest pages...")
         success, failure = self.scrape_with_workers(
             page_range=page_range,
@@ -88,12 +72,6 @@ class Command(BaseCommand):
         print(Fore.GREEN + "\nScraping completed!")
         print(f"Successfully scraped pages: {success}")
         print(f"Failed pages: {failure}")
-
-        if os.path.exists('clubs_to_fix.txt'):
-            with open('clubs_to_fix.txt') as f:
-                failed_clubs = len(f.readlines())
-            print(Fore.YELLOW + f"\nFailed clubs logged: {failed_clubs}")
-            print("Run 'python manage.py scrape_latest --retry-failed' to retry failed clubs")
 
     def scrape_with_workers(self, page_range, workers, delay, use_proxy):
         """Scrape pages using worker threads with progress tracking."""
@@ -171,46 +149,4 @@ class Command(BaseCommand):
         title = f"Scraping page {current_page}/{end_page} ({progress:.1f}%)"
         os.system(f"title {title}")
 
-    def retry_failed_clubs(self):
-        """Retry scraping clubs that previously failed."""
-        if not os.path.exists('clubs_to_fix.txt'):
-            print(Fore.YELLOW + "No failed clubs to retry")
-            return
-
-        print(Fore.CYAN + "Retrying failed clubs...")
-
-        # Read failed clubs
-        with open('clubs_to_fix.txt') as f:
-            failed_clubs = [line.strip().split(' - ')[0] for line in f.readlines()]
-
-        # Create new file for clubs that fail again
-        temp_file = 'clubs_to_fix_temp.txt'
-        success_count = 0
-
-        for club_slug in failed_clubs:
-            print(Fore.CYAN + f"\nRetrying {club_slug}")
-            try:
-                # Try to scrape club again with increased timeout and retries
-                club = Club.objects.get(slug=club_slug)
-                if club.scrape_details(use_proxy=True, max_retries=5, timeout=30):
-                    success_count += 1
-                    print(Fore.GREEN + f"Successfully scraped {club_slug}")
-                else:
-                    print(Fore.RED + f"Failed to scrape {club_slug}")
-                    with open(temp_file, 'a') as f:
-                        f.write(f"{club_slug} - Retry failed\n")
-            except Exception as e:
-                print(Fore.RED + f"Error retrying {club_slug}: {str(e)}")
-                with open(temp_file, 'a') as f:
-                    f.write(f"{club_slug} - {str(e)}\n")
-
-            time.sleep(2)  # Delay between retries
-
-        # Replace original file with new one
-        if os.path.exists(temp_file):
-            os.replace(temp_file, 'clubs_to_fix.txt')
-
-        print(Fore.GREEN + "\nRetry completed!")
-        print(f"Successfully recovered: {success_count}")
-        print(f"Still failed: {len(failed_clubs) - success_count}")
 
