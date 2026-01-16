@@ -16,7 +16,6 @@ from core.constants import (
     BASE_URL,
     BRAND_SLUG_SUFFIX,
     COLLECTION_CONTAINER_CLASS,
-    CURRENT_CENTURY,
     CURRENT_SEASON_YEAR,
     DEFAULT_LOGO_URL,
     HTTP_STATUS_FORBIDDEN,
@@ -132,12 +131,11 @@ def get_season(season_slug: str, season_display: str | None = None) -> Season:
 
             if second_year_short:
                 # Determine century for second year
-                second_year_short_int = int(second_year_short)
                 first_year_int = int(first_year)
-                
+
                 # Try same century first
                 second_year_candidate = int(first_century + second_year_short)
-                
+
                 # If second year would be before first year, it crossed century boundary
                 if second_year_candidate < first_year_int:
                     # Crossed century boundary - second year is in next century
@@ -243,11 +241,11 @@ def get_season(season_slug: str, season_display: str | None = None) -> Season:
         # Validate before creating
         try:
             first_year_int = int(first_year)
-        except ValueError:
+        except ValueError as err:
             raise InvalidSeasonError(
                 season_slug,
                 f"first_year '{first_year}' is not a valid integer"
-            )
+            ) from err
 
         # Validate year range for first_year
         if first_year_int < 1800 or first_year_int > 2100:
@@ -259,11 +257,11 @@ def get_season(season_slug: str, season_display: str | None = None) -> Season:
         if second_year:
             try:
                 second_year_int = int(second_year)
-            except ValueError:
+            except ValueError as err:
                 raise InvalidSeasonError(
                     season_slug,
                     f"second_year '{second_year}' is not a valid integer"
-                )
+                ) from err
 
             # Validate year range for second_year
             if second_year_int < 1800 or second_year_int > 2100:
@@ -285,7 +283,7 @@ def get_season(season_slug: str, season_display: str | None = None) -> Season:
             # This handles cases like "1937-49" or "1956-59" which were common in older football
             year_span = second_year_int - first_year_int
             max_span = 20 if first_year_int < 1960 else 2
-            
+
             if year_span > max_span:
                 raise InvalidSeasonError(
                     season_slug,
