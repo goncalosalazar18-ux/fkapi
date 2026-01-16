@@ -38,7 +38,7 @@ class Command(BaseCommand):
             slug_parts = item.strip("/").split("/")
             clean_slug = slug_parts[0]
             kit_id = slug_parts[1] if len(slug_parts) > 1 else None
-            
+
             # find if a kit objects with the slug exists
             kit = Kit.objects.filter(slug=clean_slug).first()
             if kit:

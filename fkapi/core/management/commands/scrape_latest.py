@@ -6,7 +6,6 @@ import time
 from colorama import Fore
 from django.core.management.base import BaseCommand
 
-from core.models import Club
 from core.scrapers import scrape_lastest
 
 
