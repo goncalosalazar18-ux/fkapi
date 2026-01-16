@@ -66,7 +66,7 @@ admin.site.register(Brand, BrandAdmin)
 
 
 class KitAdmin(admin.ModelAdmin):
-    list_display = ('id', 'image_thumb', 'name', 'brand',
+    list_display = ('id', 'image_thumb', 'slug', 'name', 'brand',
                     'season', 'type', 'team', 'design', 'colors', 'competitions')
     readonly_fields = ('image_thumb',)
     search_fields = ('name', 'slug','id')

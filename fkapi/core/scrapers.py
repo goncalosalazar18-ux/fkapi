@@ -16,14 +16,12 @@ from core.constants import (
     BASE_URL,
     BRAND_SLUG_SUFFIX,
     COLLECTION_CONTAINER_CLASS,
-    CURRENT_CENTURY,
     CURRENT_SEASON_YEAR,
     DEFAULT_LOGO_URL,
     HTTP_STATUS_FORBIDDEN,
     KIT_CLASS,
     KIT_CONTAINER_CLASS,
     KIT_SEASON_CLASS,
-    KITS_TO_FIX_FILE,
     LATEST_PAGE_URL,
     MAX_RETRIES,
     RETRY_DELAY,
@@ -110,27 +108,45 @@ def get_season(season_slug: str, season_display: str | None = None) -> Season:
     try:
         import re
 
-        # Check if the input is a 2-digit year format (e.g., '24-25', '23-24')
+        # Clean "(Carry-over)" text - we don't differentiate between carry-over and normal seasons
+        season_slug = re.sub(r'\s*\(Carry-over\)\s*', '', season_slug, flags=re.IGNORECASE).strip()
+
+        # Check if the input is a 2-digit year format (e.g., '24-25', '23-24', '99-00')
         two_digit_year_match = re.match(r'^(\d{2})(?:-(\d{2}))?$', season_slug)
         if two_digit_year_match and len(season_slug) <= 7:
             first_year_short = two_digit_year_match.group(1)
             second_year_short = two_digit_year_match.group(2)
+            first_year_short_int = int(first_year_short)
 
-            # Assume 2000s for 2-digit years (24 -> 2024)
-            first_year = CURRENT_CENTURY + first_year_short
+            # Determine century for 2-digit years:
+            # - Years >= 50 are likely from 1900s (1950-1999)
+            # - Years < 50 are likely from 2000s (2000-2049)
+            # This handles cases like '99-00' -> 1999-00, '24-25' -> 2024-25
+            if first_year_short_int >= 50:
+                first_century = "19"
+            else:
+                first_century = "20"
+
+            first_year = first_century + first_year_short
 
             if second_year_short:
                 # Determine century for second year
                 first_year_int = int(first_year)
-                second_year_int = int(CURRENT_CENTURY + second_year_short)
 
-                if second_year_int < first_year_int:
-                    # Crossed century boundary
-                    century = str(int(CURRENT_CENTURY) + 1)
+                # Try same century first
+                second_year_candidate = int(first_century + second_year_short)
+
+                # If second year would be before first year, it crossed century boundary
+                if second_year_candidate < first_year_int:
+                    # Crossed century boundary - second year is in next century
+                    if first_century == "19":
+                        second_century = "20"
+                    else:
+                        second_century = "21"
                 else:
-                    century = CURRENT_CENTURY
+                    second_century = first_century
 
-                second_year = century + second_year_short
+                second_year = second_century + second_year_short
                 year_str = f"{first_year}-{second_year_short}"
             else:
                 second_year = None
@@ -180,9 +196,25 @@ def get_season(season_slug: str, season_display: str | None = None) -> Season:
                 year_str = first_year
         else:
             # Try to extract year from a full kit slug
-            year_match = re.search(r'-(\d{4})(?:-(\d{2}))?-', season_slug + '-')
-            if not year_match:
+            # Find ALL potential year matches to handle cases where club name contains a year
+            # (e.g., "fc-rouen-1899-2023-24-home-kit" should use 2023, not 1899)
+            all_year_matches = list(re.finditer(r'-(\d{4})(?:-(\d{2}))?-', season_slug + '-'))
+            if not all_year_matches:
                 raise ValueError(f"Could not find year in slug: {season_slug}")
+
+            # If multiple matches, prefer the last one (most likely to be the actual season year)
+            # Also validate that the year is in a reasonable range (1900-2100)
+            year_match = None
+            for match in reversed(all_year_matches):
+                potential_year = int(match.group(1))
+                # Prefer years in reasonable range (1900-2100) over very old years from club names
+                if 1900 <= potential_year <= 2100:
+                    year_match = match
+                    break
+
+            # If no match in reasonable range, use the last match
+            if not year_match:
+                year_match = all_year_matches[-1]
 
             first_year = year_match.group(1)
             second_year_short = year_match.group(2)
@@ -205,6 +237,58 @@ def get_season(season_slug: str, season_display: str | None = None) -> Season:
             else:
                 second_year = None
                 year_str = first_year
+
+        # Validate before creating
+        try:
+            first_year_int = int(first_year)
+        except ValueError as err:
+            raise InvalidSeasonError(
+                season_slug,
+                f"first_year '{first_year}' is not a valid integer"
+            ) from err
+
+        # Validate year range for first_year
+        if first_year_int < 1800 or first_year_int > 2100:
+            raise InvalidSeasonError(
+                season_slug,
+                f"first_year '{first_year}' is out of valid range (1800-2100)"
+            )
+
+        if second_year:
+            try:
+                second_year_int = int(second_year)
+            except ValueError as err:
+                raise InvalidSeasonError(
+                    season_slug,
+                    f"second_year '{second_year}' is not a valid integer"
+                ) from err
+
+            # Validate year range for second_year
+            if second_year_int < 1800 or second_year_int > 2100:
+                raise InvalidSeasonError(
+                    season_slug,
+                    f"second_year '{second_year}' is out of valid range (1800-2100)"
+                )
+
+            # Validate that second_year is not before first_year
+            if second_year_int < first_year_int:
+                raise InvalidSeasonError(
+                    season_slug,
+                    f"second_year '{second_year}' ({second_year_int}) cannot be before first_year '{first_year}' ({first_year_int})"
+                )
+
+            # Validate year span
+            # For modern seasons (after 1960), max span is 2 years
+            # For older seasons (before 1960), allow larger spans (up to 20 years)
+            # This handles cases like "1937-49" or "1956-59" which were common in older football
+            year_span = second_year_int - first_year_int
+            max_span = 20 if first_year_int < 1960 else 2
+
+            if year_span > max_span:
+                raise InvalidSeasonError(
+                    season_slug,
+                    f"Year span is {year_span} years (max allowed: {max_span}). first_year: {first_year}, second_year: {second_year}"
+                )
 
         # Try to get existing season first
         try:
@@ -360,23 +444,17 @@ def scrape_kit(slug: str, kit_id: str | None = None, use_proxy: bool = False) ->
             retry_count += 1
             if retry_count == max_retries:
                 logger.error(f"Max retries ({max_retries}) reached. Giving up.")
-                _log_missing_item(KITS_TO_FIX_FILE, f"{slug} - Network error: {str(e)}")
                 return None
             logger.warning(f"Retrying in 2 seconds... (attempt {retry_count + 1}/{max_retries})")
             time.sleep(2)
 
         except Exception as e:
-            logger.error(f"Unexpected error scraping {slug}: {str(e)}", exc_info=True)
-            _log_missing_item('kits_to_fix.txt', f"{slug} - {str(e)}")
+            logger.error(f"Unexpected error scraping {slug}: {str(e)}")
             return None
 
 
 
 
-def _log_missing_item(filename: str, content: str) -> None:
-    """Helper function to log missing or error items to a file."""
-    with open(filename, 'a', encoding='utf-8') as file:
-        file.write(f"{content}\n")
 
 
 
@@ -459,13 +537,11 @@ def scrape_competition(slug: str, use_proxy: bool = False) -> Competition | None
             print(Fore.RED + f"Network error scraping competition {slug}: {str(e)}")
             retry_count += 1
             if retry_count == max_retries:
-                _log_missing_item('competitions_to_fix.txt', f"{slug} - Network error: {str(e)}")
                 return None
             time.sleep(2)
 
         except Exception as e:
             print(Fore.RED + f"Error scraping competition {slug}: {str(e)}")
-            _log_missing_item('competitions_to_fix.txt', f"{slug} - {str(e)}")
             return None
 
 
@@ -552,13 +628,11 @@ def scrape_club_details(slug: str, use_proxy: bool = False) -> Club | None:
             print(Fore.RED + f"Network error scraping club {slug}: {str(e)}")
             retry_count += 1
             if retry_count == max_retries:
-                _log_missing_item('clubs_to_fix.txt', f"{slug} - Network error: {str(e)}")
                 return None
             time.sleep(2)
 
         except Exception as e:
             print(Fore.RED + f"Error scraping club {slug}: {str(e)}")
-            _log_missing_item('clubs_to_fix.txt', f"{slug} - {str(e)}")
             return None
 
 
@@ -663,13 +737,11 @@ def scrape_whole_club(club: Club) -> Club | None:
             print(Fore.RED + f"Network error scraping {club.name}: {str(e)}")
             retry_count += 1
             if retry_count == max_retries:
-                _log_missing_item('clubs_to_fix.txt', f"{club.slug} - Network error: {str(e)}")
                 return None
             time.sleep(2)
 
         except Exception as e:
             print(Fore.RED + f"Error scraping {club.name}: {str(e)}")
-            _log_missing_item('clubs_to_fix.txt', f"{club.slug} - {str(e)}")
             return None
 
 
@@ -705,11 +777,17 @@ def _process_kit(kit_element: BeautifulSoup, club: Club, season: Season, brand: 
         if not kit_link:
             return None
 
-        slug = kit_link["href"].replace("/", "")
+        # Extract slug and kit_id from href (format: slug/id/ or slug/id)
+        href = kit_link["href"]
+        slug_parts = href.strip("/").split("/")
+        clean_slug = slug_parts[0]
+        kit_id = slug_parts[1] if len(slug_parts) > 1 else None
 
-        # Skip if kit already exists
-        if Kit.objects.filter(slug=slug).exists():
-            return None
+        # Delete existing kit if it exists (for re-scraping)
+        existing_kit = Kit.objects.filter(slug=clean_slug).first()
+        if existing_kit:
+            print(Fore.YELLOW + f"Deleting existing kit {clean_slug} for re-scrape...")
+            existing_kit.delete()
 
         # Get kit type
         type_text = kit_element.find("div", class_=KIT_SEASON_CLASS)
@@ -724,10 +802,10 @@ def _process_kit(kit_element: BeautifulSoup, club: Club, season: Season, brand: 
         type_k, _ = Type_K.objects.get_or_create(name=type_name)
 
         # Scrape full kit details
-        return scrape_kit_lite(slug, brand, season, type_k, club)
+        return scrape_kit_lite(clean_slug, brand, season, type_k, club, kit_id=kit_id)
 
     except Exception as e:
-        print(Fore.YELLOW + f"Error processing kit {slug}: {str(e)}")
+        print(Fore.YELLOW + f"Error processing kit: {str(e)}")
         return None
 
 
@@ -737,6 +815,7 @@ def scrape_kit_lite(
     season: Season,
     type_k: Type_K,
     club: Club,
+    kit_id: str | None = None,
     use_proxy: bool = True
 ) -> Kit | None:
     """
@@ -763,7 +842,7 @@ def scrape_kit_lite(
     while retry_count < max_retries:
         try:
             # Make request
-            response = http_get(build_kit_url(slug), use_proxy=use_proxy)
+            response = http_get(build_kit_url(slug, kit_id), use_proxy=use_proxy)
 
             # Handle HTTP errors
             if response.status_code == HTTP_STATUS_FORBIDDEN:
@@ -824,45 +903,66 @@ def scrape_kit_lite(
 
             # Create kit and process competitions atomically
             with transaction.atomic():
-                # Create or get kit
+                # Create or get kit by slug (slug is unique)
                 kit, created = Kit.objects.get_or_create(
-                    name=kit_name,
+                    slug=slug,
                     defaults={
+                        'name': kit_name,
                         'team': club,
                         'season': season,
                         'type': type_k,
                         'brand': brand,
                         'rating': rating,
-                        'slug': slug.replace("/", ""),
+                        'kit_id': kit_id,
                         'main_img_url': main_img_url,
                         'design': design
                     }
                 )
 
+                # Update kit if it already existed
+                if not created:
+                    # Update all fields to ensure we have the latest data
+                    kit.name = kit_name
+                    kit.team = club
+                    kit.season = season
+                    kit.type = type_k
+                    kit.brand = brand
+                    kit.rating = rating
+                    kit.main_img_url = main_img_url
+                    kit.design = design
+                    if kit_id:
+                        kit.kit_id = kit_id
+                    kit.save()
+
+                # Process competitions (for both new and existing kits)
+                competitions_cell = None
+                for row in table_rows:
+                    header = row.find("td")
+                    if header and header.text.strip() == "League":
+                        competitions_cell = row.find_all("td")[1]
+                        break
+
+                if competitions_cell:
+                    competitions_html = str(competitions_cell)
+                    from core.services.kits_service import KitsService
+
+                    # Clear existing competitions and re-process
+                    kit.competition.clear()
+                    KitsService.process_competitions(kit, competitions_html, slug)
+
+                # Process colors if available (for both new and existing kits)
+                if colors_data:
+                    from core.services.kits_service import KitsService
+
+                    # Clear existing colors and re-process
+                    kit.secondary_color.clear()
+                    kit.primary_color = None
+                    KitsService.process_colors(kit, colors_data)
+
                 if created:
-                    # Process competitions only for new kits
-                    competitions_cell = None
-                    for row in table_rows:
-                        header = row.find("td")
-                        if header and header.text.strip() == "League":
-                            competitions_cell = row.find_all("td")[1]
-                            break
-
-                    if competitions_cell:
-                        competitions_html = str(competitions_cell)
-                        from core.services.kits_service import KitsService
-
-                        KitsService.process_competitions(kit, competitions_html, slug)
-
-                    # Process colors if available
-                    if colors_data:
-                        from core.services.kits_service import KitsService
-
-                        KitsService.process_colors(kit, colors_data)
-
                     print(Fore.GREEN + f"Created new kit: {kit}")
                 else:
-                    print(Fore.CYAN + f"Kit already exists: {kit}")
+                    print(Fore.CYAN + f"Updated existing kit: {kit}")
 
                 return kit
 
@@ -870,13 +970,11 @@ def scrape_kit_lite(
             print(Fore.RED + f"Network error scraping kit {slug}: {str(e)}")
             retry_count += 1
             if retry_count == max_retries:
-                _log_missing_item(KITS_TO_FIX_FILE, f"{slug} - Network error: {str(e)}")
                 return None
             time.sleep(2)
 
         except Exception as e:
             print(Fore.RED + f"Error scraping kit {slug}: {str(e)}")
-            _log_missing_item('kits_to_fix.txt', f"{slug} - {str(e)}")
             return None
 
 
@@ -961,13 +1059,11 @@ def scrape_brand(slug: str, use_proxy: bool = False) -> Brand | None:
             print(Fore.RED + f"Network error scraping brand {slug}: {str(e)}")
             retry_count += 1
             if retry_count == max_retries:
-                _log_missing_item('brands_to_fix.txt', f"{slug} - Network error: {str(e)}")
                 return None
             time.sleep(2)
 
         except Exception as e:
             print(Fore.RED + f"Error scraping brand {slug}: {str(e)}")
-            _log_missing_item('brands_to_fix.txt', f"{slug} - {str(e)}")
             return None
 
 

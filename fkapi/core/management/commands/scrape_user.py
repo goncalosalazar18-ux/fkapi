@@ -34,10 +34,15 @@ class Command(BaseCommand):
                     break
 
         for item in items:
+            # Extract slug and kit_id from href (format: slug/id/ or slug/id)
+            slug_parts = item.strip("/").split("/")
+            clean_slug = slug_parts[0]
+            kit_id = slug_parts[1] if len(slug_parts) > 1 else None
+
             # find if a kit objects with the slug exists
-            kit = Kit.objects.filter(slug=item.replace("/", "")).first()
+            kit = Kit.objects.filter(slug=clean_slug).first()
             if kit:
                 print(f"Kit {kit.name} already exists")
             else:
-                scrape_kit(item)
+                scrape_kit(clean_slug, kit_id=kit_id)
                 time.sleep(1)

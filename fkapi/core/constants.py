@@ -42,8 +42,6 @@ LATEST_PAGE_URL = "/latest/?p="
 USER_PAGE_URL = "/user/{username}?p="
 
 # File names for logging
-KITS_TO_FIX_FILE = "kits_to_fix.txt"
-CLUBS_TO_FIX_FILE = "clubs_to_fix.txt"
 TEAM_SLUG_CHANGES_LOG = "team_slug_changes.log"
 
 # Brand slug suffix

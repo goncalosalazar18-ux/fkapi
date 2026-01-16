@@ -7,7 +7,7 @@ from typing import Any
 
 from django.utils.text import slugify
 
-from core.constants import COLOR_SEPARATOR_SLASH, COMPETITION_SEPARATOR, COMPETITION_SLUG_SUFFIX, KITS_TO_FIX_FILE
+from core.constants import COLOR_SEPARATOR_SLASH, COMPETITION_SEPARATOR, COMPETITION_SLUG_SUFFIX
 from core.models import Color, Competition, Kit
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,6 @@ class KitsService:
             kit.save()
         except Exception as e:
             logger.error(f"Error processing competitions for {kit}: {str(e)}")
-            KitsService._log_missing_item(KITS_TO_FIX_FILE, f"{slug} - Competition error: {str(e)} - {competitions_html}")
 
     @staticmethod
     def process_colors(kit: Kit, colors_str: str) -> None:
@@ -98,7 +97,6 @@ class KitsService:
             kit.save()
         except Exception as e:
             logger.error(f"Error processing colors for {kit}: {str(e)}")
-            KitsService._log_missing_item(KITS_TO_FIX_FILE, f"{kit.slug} - Color error: {str(e)} - {colors_str}")
 
     @staticmethod
     def create_or_update_kit(
@@ -179,9 +177,3 @@ class KitsService:
                 },
             )
             return kit, created
-
-    @staticmethod
-    def _log_missing_item(filename: str, content: str) -> None:
-        """Helper function to log missing or error items to a file."""
-        with open(filename, "a", encoding="utf-8") as file:
-            file.write(f"{content}\n")
