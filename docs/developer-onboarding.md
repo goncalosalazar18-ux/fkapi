@@ -1,6 +1,20 @@
 # Developer Onboarding Guide
 
-Welcome to the Football Kit Archive API project! This guide will help you get started as a developer.
+Guide for new developers joining the project. This document covers setup, project structure, development workflow, and common tasks.
+
+## Table of Contents
+
+1. [Prerequisites](#prerequisites)
+2. [Initial Setup](#initial-setup)
+3. [Project Structure](#project-structure)
+4. [Development Workflow](#development-workflow)
+5. [Key Concepts](#key-concepts)
+6. [Common Tasks](#common-tasks)
+7. [Debugging](#debugging)
+8. [Getting Help](#getting-help)
+9. [Next Steps](#next-steps)
+
+---
 
 ## Prerequisites
 
@@ -264,4 +278,7 @@ LOGGING = {
 - Write docstrings for new functions/classes
 - Update documentation when adding features
 
-Happy coding! 🚀
+---
+
+**Last Updated**: 2026-01-17  
+**Maintained by**: sunr4y

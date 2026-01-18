@@ -126,3 +126,6 @@ precision = 2
 
 [tool.coverage.html]
 directory = "htmlcov"
+
+[tool.coverage.xml]
+output = "coverage.xml"

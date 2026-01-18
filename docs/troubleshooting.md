@@ -1,6 +1,19 @@
-# Troubleshooting FAQ
+# Troubleshooting Guide
 
 Common issues and solutions for the Football Kit Archive API.
+
+## Table of Contents
+
+1. [Setup Issues](#setup-issues)
+2. [Runtime Issues](#runtime-issues)
+3. [Testing Issues](#testing-issues)
+4. [Scraping Issues](#scraping-issues)
+5. [API Issues](#api-issues)
+6. [Performance Issues](#performance-issues)
+7. [Getting More Help](#getting-more-help)
+8. [Common Error Messages](#common-error-messages)
+
+---
 
 ## Setup Issues
 
@@ -367,3 +380,8 @@ Scraping operation failed. Check:
 - Network connectivity
 - Target website availability
 - HTML structure changes
+
+---
+
+**Last Updated**: 2026-01-17  
+**Maintained by**: sunr4y

@@ -54,7 +54,22 @@ _api_auth = APIKeyAuth() if os.getenv("DJANGO_API_ENABLE_AUTH", "False").lower()
 api = NinjaAPI(
     title="Football Kit Archive API",
     description="""
-    API for managing and retrieving football kit information.
+    Comprehensive REST API for managing and retrieving football kit information from around the world.
+
+    This API provides access to a vast database of football kits, including:
+    - Club information with logos and country data
+    - Kit details with images, brands, and design information
+    - Season and competition data
+    - Advanced search capabilities with fuzzy matching
+    - Color and design analysis
+
+    ## Features
+
+    - **Advanced Search**: Trigram-based fuzzy search for clubs, kits, and brands
+    - **Accent-Insensitive**: Find "Málaga" by searching "Malaga"
+    - **Caching**: Responses are cached for optimal performance
+    - **Pagination**: Efficient pagination for large result sets
+    - **Rate Limiting**: Built-in protection against abuse
 
     ## Authentication
     API key authentication is optional and can be enabled by setting `DJANGO_API_ENABLE_AUTH=True`.
@@ -91,10 +106,63 @@ api = NinjaAPI(
 
     ## Base URL
     All endpoints are prefixed with `/api/`
+
+    ## Additional Documentation
+
+    For project documentation including setup guides, ethical scraping practices, troubleshooting, and architecture:
+    - **Project Documentation**: See `/api/docs/info` endpoint or repository `docs/` directory
+    - **Getting Started**: Complete setup guide with ethical scraping practices
+    - **Troubleshooting**: Common issues and solutions
+    - **Architecture**: System design and data flow diagrams
+    - **Celery Setup**: Optional background task configuration
+
+    All documentation is available in the repository's `docs/` directory.
     """,
     version="1.0.0",
     auth=_api_auth,
     csrf=False,  # Disable CSRF for API endpoints
+    openapi_extra={
+        "info": {
+            "contact": {
+                "name": "API Support",
+                "email": "support@footballkitarchive.com"
+            },
+            "license": {
+                "name": "MIT",
+                "url": "https://opensource.org/licenses/MIT"
+            }
+        },
+        "tags": [
+            {
+                "name": "System",
+                "description": "System endpoints for health checks, metrics, and monitoring"
+            },
+            {
+                "name": "Clubs",
+                "description": "Operations related to football clubs: search, retrieve, and manage club data"
+            },
+            {
+                "name": "Kits",
+                "description": "Operations related to football kits: search, retrieve complete kit information"
+            },
+            {
+                "name": "Seasons",
+                "description": "Operations related to football seasons: search and retrieve season data"
+            },
+            {
+                "name": "Brands",
+                "description": "Operations related to kit brands (Adidas, Nike, Puma, etc.)"
+            },
+            {
+                "name": "Competitions",
+                "description": "Operations related to football competitions and leagues"
+            },
+            {
+                "name": "Testing",
+                "description": "Testing and development endpoints"
+            }
+        ]
+    }
 )
 
 
@@ -166,6 +234,107 @@ def health_check(request: HttpRequest) -> dict[str, Any]:
         health_status["cache_error"] = str(e)
 
     return health_status
+
+
+@api.get(
+    "/docs/info",
+    summary="Project Documentation Information",
+    tags=["System"],
+    description="""
+    Get information about the project and links to documentation.
+
+    Returns:
+    - Project overview and description
+    - Links to all available documentation
+    - Setup guides and tutorials
+    - Ethical scraping guidelines
+    - Troubleshooting resources
+    - Architecture and design documents
+    """,
+    response=dict
+)
+def get_documentation_info(request: HttpRequest) -> dict[str, Any]:
+    """
+    Get project documentation information and links.
+    """
+    from pathlib import Path
+
+    # Get repository root (assuming we're in fkapi/fkapi/)
+    repo_root = Path(__file__).parent.parent.parent
+    docs_dir = repo_root / "docs"
+
+    # Check if docs exist
+    docs_available = docs_dir.exists()
+
+    return {
+        "project": {
+            "name": "Football Kit Archive API",
+            "version": "1.0.0",
+            "description": "Comprehensive REST API for managing and retrieving football kit information"
+        },
+        "documentation": {
+            "available": docs_available,
+            "base_path": str(docs_dir) if docs_available else None,
+            "guides": {
+                "getting_started": {
+                    "title": "Getting Started Guide",
+                    "description": "Complete setup guide from scratch, including initial database population and ethical scraping practices",
+                    "file": "GETTING_STARTED.md"
+                },
+                "celery_setup": {
+                    "title": "Celery Setup Guide",
+                    "description": "Optional: Guide to setting up Celery for background tasks (recommended for production)",
+                    "file": "CELERY_SETUP.md"
+                },
+                "troubleshooting": {
+                    "title": "Troubleshooting Guide",
+                    "description": "Common issues and solutions for setup, scraping, API, and database problems",
+                    "file": "troubleshooting.md"
+                },
+                "architecture": {
+                    "title": "Architecture Documentation",
+                    "description": "System architecture, design decisions, and data flow diagrams",
+                    "file": "architecture.md"
+                },
+                "developer_onboarding": {
+                    "title": "Developer Onboarding",
+                    "description": "Guide for new developers joining the project",
+                    "file": "developer-onboarding.md"
+                },
+                "ethical_scraping": {
+                    "title": "Ethical Scraping Practices",
+                    "description": "Guidelines for responsible web scraping: robots.txt, rate limiting, Terms of Service",
+                    "note": "See GETTING_STARTED.md section 'Legal and Ethical Reminders'"
+                }
+            },
+            "api_documentation": {
+                "interactive": "/api/docs",
+                "openapi_schema": "/api/openapi.json",
+                "endpoint_catalog": "docs/api/endpoint-catalog.md",
+                "usage_examples": "docs/api/usage-examples.md"
+            },
+            "quick_links": {
+                "repository": "See repository root for full documentation",
+                "docs_directory": "docs/",
+                "api_docs": "http://localhost:8000/api/docs"
+            }
+        },
+        "ethical_scraping_reminders": {
+            "important": "Always scrape responsibly",
+            "guidelines": [
+                "Check robots.txt before scraping",
+                "Review Terms of Service",
+                "Use proper User-Agent with contact info",
+                "Respect rate limits (minimum 2 seconds between requests)",
+                "Only scrape what you need",
+                "Don't overload servers",
+                "Handle errors gracefully",
+                "Monitor your scraping activity",
+                "Give attribution when displaying data"
+            ],
+            "legal_note": "Web scraping may be subject to legal restrictions. Always ensure you have permission to scrape the target website."
+        }
+    }
 
 
 @api.get("/metrics", summary="API Usage Metrics", tags=["System"], description="""
@@ -1159,8 +1328,48 @@ def get_random_clubs(request: HttpRequest, page: int = Query(1, description="Pag
         }
 
 
-@api.get("/merge-suggestions/")
-def get_merge_suggestions(request: HttpRequest, threshold: float = 0.70, limit: int = 50) -> dict[str, Any]:
+@api.get(
+    "/merge-suggestions/",
+    summary="Get Club Merge Suggestions",
+    description="""
+    Get suggestions for merging duplicate clubs based on an advanced similarity algorithm.
+
+    **Algorithm Features:**
+    - Normalizes club names by removing common prefixes/suffixes (FC, CF, etc.)
+    - Uses multiple similarity metrics (exact match, ratio, word overlap, contains)
+    - Compares logo filenames for additional matching confidence
+    - Filters out women's teams, youth teams, and reserve teams
+
+    **Similarity Calculation:**
+    The algorithm combines multiple factors:
+    - Exact match (25% weight)
+    - Normalized exact match (20% weight)
+    - String similarity ratio (20% weight)
+    - Contains/contains check (15% weight)
+    - Word overlap (15% weight)
+    - Logo match bonus (up to 30% boost)
+
+    **Filtering:**
+    Automatically excludes clubs with keywords like:
+    - "femenino", "femenina", "women", "woman"
+    - "sub-19", "sub-20", "u19", "u20", etc.
+    - "filial", "b team", "reserve", "youth", "academy"
+
+    **Response:**
+    Returns suggestions sorted by total kit count (descending), showing:
+    - Both clubs with their details
+    - Similarity score (0.0 to 1.0)
+    - Breakdown of similarity components
+    - Total kits that would be merged
+    """,
+    tags=["Clubs"],
+    response=dict
+)
+def get_merge_suggestions(
+    request: HttpRequest,
+    threshold: float = Query(0.70, description="Minimum similarity threshold (0.0 to 1.0)", ge=0.0, le=1.0, example=0.70),
+    limit: int = Query(50, description="Maximum number of suggestions to return", ge=1, le=200, example=50)
+) -> dict[str, Any]:
     """
     Get suggestions for merging duplicate clubs based on improved similarity algorithm.
     Filters out clubs with words like "femenino", "sub", "filial", etc.
@@ -1596,8 +1805,39 @@ def get_merge_suggestions(request: HttpRequest, threshold: float = 0.70, limit: 
         return {"suggestions": [], "total": 0, "error": str(e)}
 
 
-@api.post("/merge-clubs/")
-def merge_clubs(request: HttpRequest, source_id: int = Query(...), target_id: int = Query(...)) -> dict[str, Any]:
+@api.post(
+    "/merge-clubs/",
+    summary="Merge Two Clubs",
+    description="""
+    Merge two clubs by moving all kits from the source club to the target club and deleting the source.
+
+    **Operation Details:**
+    - All kits from the source club are transferred to the target club
+    - If target club is missing logo/country data, it's copied from source
+    - Source club is permanently deleted after merge
+    - Operation is atomic (all or nothing)
+
+    **Data Preservation:**
+    - Target club's existing data is preserved
+    - Source club's logo/country is only copied if target is missing it
+    - All kit relationships are updated to point to target club
+
+    **Response Codes:**
+    - `200 OK`: Merge successful
+    - `400 Bad Request`: Invalid club IDs or cannot merge club with itself
+    - `404 Not Found`: One or both clubs not found
+    - `500 Internal Server Error`: Database error during merge
+
+    **Warning:** This operation is irreversible. The source club will be permanently deleted.
+    """,
+    tags=["Clubs"],
+    response=dict
+)
+def merge_clubs(
+    request: HttpRequest,
+    source_id: int = Query(..., description="ID of the source club to merge from", gt=0, example=123),
+    target_id: int = Query(..., description="ID of the target club to merge into", gt=0, example=456)
+) -> dict[str, Any]:
     """
     Merge two clubs. Moves all kits from source to target and deletes source.
     """

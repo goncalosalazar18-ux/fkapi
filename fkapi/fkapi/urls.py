@@ -35,6 +35,7 @@ from core.views import (
     top_clubs_by_country,
     update_competition_country,
 )
+from core.views_docs import docs_index, docs_view
 
 from .api import api
 
@@ -42,6 +43,8 @@ urlpatterns = [
     path('', random_kits_view, name='home'),  # Redirect root to random kits
     path('admin/', admin.site.urls),
     path('api/', api.urls),
+    path('docs/', docs_index, name='docs_index'),
+    path('docs/<path:doc_path>/', docs_view, name='docs_view'),
     path('assign-countries/', assign_countries, name='assign_countries'),
     path('update-competition-country/', update_competition_country, name='update_competition_country'),
     path('propagate-countries/', propagate_countries, name='propagate_countries'),

@@ -58,6 +58,7 @@ fkapi/core/migrations/
 # Testing
 .pytest_cache/
 .coverage
+coverage.xml
 htmlcov/
 .tox/
 .hypothesis/
@@ -69,6 +70,7 @@ gitlab_link/
 kits_to_fix.txt
 clubs_to_fix.txt
 api.log
+nul
 
 # Docs temp
 docs/tmp/

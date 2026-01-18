@@ -1067,7 +1067,7 @@ def scrape_brand(slug: str, use_proxy: bool = False) -> Brand | None:
             return None
 
 
-def scrape_lastest(page: int = 1, use_proxy: bool = False) -> bool:
+def scrape_lastest(page: int = 1, use_proxy: bool = False) -> tuple[bool, bool]:
     """
     Scrapes the latest kits page from footballkitarchive.com.
 
@@ -1076,12 +1076,17 @@ def scrape_lastest(page: int = 1, use_proxy: bool = False) -> bool:
         use_proxy (bool, optional): Whether to use a proxy for requests. Defaults to False.
 
     Returns:
-        bool: True if page was successfully scraped, False otherwise
+        tuple[bool, bool]: (success, all_kits_exist)
+            - success: True if page was successfully scraped, False otherwise
+            - all_kits_exist: True if all kits on the page already exist in the database
 
     Raises:
         requests.exceptions.RequestException: For network-related errors
         ValueError: For invalid data in the response
     """
+    from core.tasks import scrape_kit_task
+    from core.utils.celery_utils import execute_task_async
+
     max_retries = MAX_RETRIES
     retry_count = 0
 
@@ -1108,10 +1113,12 @@ def scrape_lastest(page: int = 1, use_proxy: bool = False) -> bool:
             kits = kit_container.find_all("div", class_=KIT_CLASS)
             if not kits:
                 print(Fore.YELLOW + f"No kits found on page {page}")
-                return True  # Consider empty page as success
+                return True, True  # Consider empty page as success with all kits existing
 
             # Process each kit
-            processed_count = 0
+            existing_kits_count = 0
+            new_kits = []
+
             for kit in kits:
                 kit_link = kit.find("a")
                 if not kit_link or "href" not in kit_link.attrs:
@@ -1124,14 +1131,11 @@ def scrape_lastest(page: int = 1, use_proxy: bool = False) -> bool:
                 clean_slug = slug_parts[0]
                 kit_id = slug_parts[1] if len(slug_parts) > 1 else None
 
-
                 try:
-                    print(Fore.CYAN + f"[DEBUG] Processing kit: {clean_slug}")
-
                     # Check if kit already exists (slug is already cleaned)
                     existing_kit = Kit.objects.filter(slug=clean_slug).first()
                     if existing_kit:
-                        print(Fore.CYAN + f"Kit {clean_slug} already exists.")
+                        existing_kits_count += 1
                         # Update kit_id if it's missing and we have one
                         if not existing_kit.kit_id and kit_id:
                             print(Fore.YELLOW + f"Updating kit_id for existing kit: {clean_slug} -> {kit_id}")
@@ -1139,30 +1143,42 @@ def scrape_lastest(page: int = 1, use_proxy: bool = False) -> bool:
                             existing_kit.save()
                         continue
 
-                    print(Fore.YELLOW + f"Found new kit: {clean_slug}")
-                    if scrape_kit(clean_slug, kit_id=kit_id, use_proxy=use_proxy):
-                        processed_count += 1
-
-                    time.sleep(1)  # Delay between kits
+                    # Add to new kits list for parallel processing
+                    new_kits.append((clean_slug, kit_id))
 
                 except Exception as e:
-                    print(Fore.RED + f"Error processing kit {clean_slug}: {str(e)}")
+                    logger.error(f"Error checking kit {clean_slug}: {str(e)}")
                     continue
 
-            print(Fore.GREEN + f"Successfully processed {processed_count} new kits from page {page}")
-            return True
+            # If all kits exist, return early
+            if existing_kits_count == len(kits):
+                print(Fore.CYAN + f"All kits on page {page} already exist in database")
+                return True, True
+
+            # Process new kits in parallel
+            if new_kits:
+                print(Fore.YELLOW + f"Found {len(new_kits)} new kits on page {page}, processing in parallel...")
+                for clean_slug, kit_id in new_kits:
+                    try:
+                        execute_task_async(scrape_kit_task, clean_slug, kit_id=kit_id, use_proxy=use_proxy)
+                    except Exception as e:
+                        logger.error(f"Error queuing kit {clean_slug} for processing: {str(e)}")
+                        continue
+
+            print(Fore.GREEN + f"Successfully queued {len(new_kits)} new kits from page {page}")
+            return True, False
 
         except requests.exceptions.RequestException as e:
             print(Fore.RED + f"Network error on page {page}, attempt {retry_count + 1}: {str(e)}")
             retry_count += 1
             if retry_count == max_retries:
                 print(Fore.RED + f"Failed to scrape page {page} after {max_retries} attempts")
-                return False
+                return False, False
             time.sleep(2)
 
         except Exception as e:
             print(Fore.RED + f"Unexpected error on page {page}: {str(e)}")
-            return False
+            return False, False
 
 
 def scrape_latest_pages(
@@ -1207,9 +1223,15 @@ def scrape_latest_pages(
         try:
             print(Fore.CYAN + f"\nProcessing page {page} of {page_end}")
 
-            if scrape_lastest(page, use_proxy):
+            success, all_kits_exist = scrape_lastest(page, use_proxy)
+            if success:
                 success_count += 1
-                print(Fore.GREEN + f"Successfully scraped page {page}")
+                if all_kits_exist:
+                    print(Fore.GREEN + f"Successfully scraped page {page} (all kits already exist)")
+                    print(Fore.CYAN + "Stopping scrape as all kits on this page already exist in database")
+                    break
+                else:
+                    print(Fore.GREEN + f"Successfully scraped page {page}")
             else:
                 failure_count += 1
                 print(Fore.RED + f"Failed to scrape page {page}")

@@ -162,3 +162,9 @@ API_RATE_LIMIT = {
 }
 
 TRUST_X_FORWARDED_FOR = False
+
+# Celery configuration for tests (disabled by default)
+ENABLE_CELERY = False
+CELERY_BROKER_URL = None
+CELERY_RESULT_BACKEND = None
+CELERY_BEAT_SCHEDULE = {}

@@ -36,6 +36,14 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      
+      - id: pytest-celery-tests
+        name: Pytest Celery Tests
+        entry: bash -c 'python -m pytest fkapi/core/tests/test_celery.py -v --tb=short'
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [commit]
 
 # Global settings
 default_language_version:

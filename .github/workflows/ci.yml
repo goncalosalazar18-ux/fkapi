@@ -42,7 +42,7 @@ jobs:
       - name: Run tests with coverage
         working-directory: fkapi
         run: |
-          pytest core/tests/ -v --cov=core --cov-report=xml --cov-report=term-missing
+          pytest core/tests/ -v --cov=core --cov-report=xml:coverage.xml --cov-report=term-missing
       
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4

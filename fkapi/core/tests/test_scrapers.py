@@ -1296,7 +1296,14 @@ class ScraperTests(TestCase):
                 mock_scrape_kit.return_value = Mock()
 
                 result = scrape_lastest(1)
-                self.assertEqual(result, case["expected"])
+                # scrape_lastest now returns (success, all_kits_exist)
+                # For these tests, we check the success value
+                if isinstance(result, tuple):
+                    success, _ = result
+                    self.assertEqual(success, case["expected"])
+                else:
+                    # Backward compatibility
+                    self.assertEqual(result, case["expected"])
 
     @patch('core.scrapers.scrape_lastest')
     def test_scrape_latest_pages(self, mock_scrape_latest):
@@ -1304,18 +1311,23 @@ class ScraperTests(TestCase):
         test_cases = [
             {
                 "name": "All successful",
-                "pages": [True, True, True],
+                "pages": [(True, False), (True, False), (True, False)],
                 "expected": (3, 0)
             },
             {
                 "name": "Some failures",
-                "pages": [True, False, True],
+                "pages": [(True, False), (False, False), (True, False)],
                 "expected": (2, 1)
             },
             {
                 "name": "All failures",
-                "pages": [False, False, False],
+                "pages": [(False, False), (False, False), (False, False)],
                 "expected": (0, 3)
+            },
+            {
+                "name": "All kits exist (stop early)",
+                "pages": [(True, True), (True, False), (True, False)],
+                "expected": (1, 0)  # Stops after first page with all_kits_exist=True
             }
         ]
 

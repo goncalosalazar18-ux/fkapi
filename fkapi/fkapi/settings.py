@@ -14,8 +14,14 @@ import logging
 import os
 from pathlib import Path
 
-from celery.schedules import crontab
 from dotenv import load_dotenv
+
+try:
+    from celery.schedules import crontab
+    CELERY_AVAILABLE = True
+except ImportError:
+    CELERY_AVAILABLE = False
+    crontab = None
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -39,14 +45,21 @@ else:
     default_ip = os.environ.get('PROJECT_IP')
     ALLOWED_HOSTS = ['127.0.0.1', 'localhost'] + ([default_ip] if default_ip else [])
 
-CELERY_BROKER_URL = 'redis://localhost:6379'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379'
-CELERY_BEAT_SCHEDULE = {
-    'scrape_daily': {
-        'task': 'core.tasks.scrape_daily',
-        'schedule': crontab(hour=0, minute=0),
-    },
-}
+ENABLE_CELERY = os.getenv('ENABLE_CELERY', 'True' if CELERY_AVAILABLE else 'False').lower() in ('1', 'true', 'yes')
+
+if ENABLE_CELERY and CELERY_AVAILABLE:
+    CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379')
+    CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379')
+    CELERY_BEAT_SCHEDULE = {
+        'scrape_daily': {
+            'task': 'core.tasks.scrape_daily',
+            'schedule': crontab(hour=0, minute=0),
+        },
+    }
+else:
+    CELERY_BROKER_URL = None
+    CELERY_RESULT_BACKEND = None
+    CELERY_BEAT_SCHEDULE = {}
 
 # Cache configuration
 CACHES = {
@@ -83,10 +96,11 @@ INSTALLED_APPS = [
     'ninja_apikey',
     'core',
     'colorfield',
-    'celery',
-    'django_celery_beat',
     'django_countries',
 ]
+
+if ENABLE_CELERY and CELERY_AVAILABLE:
+    INSTALLED_APPS += ['celery', 'django_celery_beat']
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -151,7 +165,7 @@ DATABASES = {
         'USER': os.getenv('POSTGRES_USER'),
         'PASSWORD': os.getenv('POSTGRES_PASSWORD'),
         'HOST': os.getenv('POSTGRES_HOST'),
-        'PORT': 5433,
+        'PORT': os.getenv('POSTGRES_PORT') or '5432',
         'CONN_MAX_AGE': 60,
         'OPTIONS': {
             'keepalives': 1,
@@ -260,3 +274,4 @@ if DEBUG:
         INTERNAL_IPS = ['127.0.0.1', 'localhost']
     except ImportError:
         pass
+

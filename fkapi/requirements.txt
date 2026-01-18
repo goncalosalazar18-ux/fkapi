@@ -62,6 +62,7 @@ referencing==0.35.0
 requests==2.31.0
 requests-toolbelt==1.0.0
 rpds-py==0.18.0
+markdown==3.6
 ruff
 six==1.16.0
 soupsieve==2.5
