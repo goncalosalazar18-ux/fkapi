@@ -87,9 +87,6 @@ These guides cover:
   - [0001: Scraping Framework](decisions/0001-scraping-framework.md)
   - [0002: Tooling and Standards](decisions/0002-tooling-and-standards.md)
 
-### Issues and Planning
-
-- **[Issues](issues/)** - Current issues and implementation plans
 
 ## Operations
 

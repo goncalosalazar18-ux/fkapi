@@ -106,7 +106,7 @@ done
 **Identify kits to update:**
 ```bash
 # Update kits with unofficial/leaked images
-# Update specific kit
+# Update the specific kit
 docker-compose exec web python manage.py rescrape_kits --slug "arsenal-2026-home-kit"
 ```
 
