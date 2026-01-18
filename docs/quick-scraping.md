@@ -105,10 +105,11 @@ done
 
 **Identify kits to update:**
 ```bash
-# Find kits with unofficial/leaked images
-# (You'd need to mark these in your database)
-# Look for image patterns or flags
+# Update kits with unofficial/leaked images
+# Update specific kit
+docker-compose exec web python manage.py rescrape_kits --slug "arsenal-2026-home-kit"
 ```
+
 
 **Update individual kit:**
 ```bash
