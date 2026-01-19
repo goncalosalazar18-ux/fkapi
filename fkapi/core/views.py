@@ -833,11 +833,6 @@ def load_more_clubs(request: HttpRequest) -> JsonResponse:
         return JsonResponse({"error": str(e)}, status=500)
 
 
-def merge_suggestions_view(request: HttpRequest) -> HttpResponse:
-    """View to display merge suggestions interface"""
-    return render(request, "core/merge_suggestions.html")
-
-
 def top_clubs_by_country(request: HttpRequest) -> HttpResponse:
     """
     Vista para mostrar las naciones ordenadas por número de kits,

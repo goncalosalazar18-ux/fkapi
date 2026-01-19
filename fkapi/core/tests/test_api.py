@@ -105,17 +105,6 @@ class APITests(TestCase):
         self.assertIn("clubs", data)
         self.assertIn("pagination", data)
 
-    def test_get_merge_suggestions(self):
-        """Test merge suggestions endpoint."""
-        response = self.client.get("/api/merge-suggestions/")
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertIsInstance(data, dict)
-        self.assertIn("suggestions", data)
-        self.assertIn("total", data)
-        self.assertIn("threshold", data)
-        self.assertIsInstance(data["suggestions"], list)
-
     def test_search_kits(self):
         """Test kit search endpoint."""
         response = self.client.get("/api/kits/search", {"keyword": "test"})

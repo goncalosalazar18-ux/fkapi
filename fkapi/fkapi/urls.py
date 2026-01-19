@@ -27,7 +27,6 @@ from core.views import (
     get_club_competitions,
     load_more_clubs,
     load_more_kits,
-    merge_suggestions_view,
     propagate_countries,
     random_clubs_view,
     random_kits_view,
@@ -59,7 +58,6 @@ urlpatterns = [
     path('random-clubs/', random_clubs_view, name='random_clubs'),
     path('load-more-kits/', load_more_kits, name='load_more_kits'),
     path('load-more-clubs/', load_more_clubs, name='load_more_clubs'),
-    path('merge-suggestions/', merge_suggestions_view, name='merge_suggestions'),
     path('top-clubs-by-country/', top_clubs_by_country, name='top_clubs_by_country'),
 ]
 
