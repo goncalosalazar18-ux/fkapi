@@ -64,13 +64,13 @@ else:
 # Cache configuration
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'BACKEND': 'django_redis.cache.RedisCache',
         'LOCATION': os.getenv('REDIS_URL', 'redis://localhost:6379/1'),
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
         },
         'KEY_PREFIX': 'fkapi',
-        'TIMEOUT': 3600,  # Default timeout: 1 hour
+        'TIMEOUT': 3600,
     }
 }
 
@@ -135,15 +135,7 @@ TEMPLATES = [
 WSGI_APPLICATION = 'fkapi.wsgi.application'
 
 
-# Database
-# https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
-#     }
-# }
 
 
 
@@ -151,11 +143,7 @@ load_dotenv()
 
 
 
-logger = logging.getLogger(__name__)
-logger.info("DB host: %s", os.getenv('POSTGRES_HOST'))
-logger.info("DB name: %s", os.getenv('POSTGRES_DB'))
-logger.info("DB user: %s", os.getenv('POSTGRES_USER'))
-# Do not log database passwords
+
 
 
 DATABASES = {
