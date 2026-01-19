@@ -1133,14 +1133,22 @@ def scrape_lastest(page: int = 1, use_proxy: bool = False) -> tuple[bool, bool]:
 
                 try:
                     # Check if kit already exists (slug is already cleaned)
-                    existing_kit = Kit.objects.filter(slug=clean_slug).first()
+                    # Use only() to avoid loading kit_id if column doesn't exist yet
+                    existing_kit = Kit.objects.filter(slug=clean_slug).only('id', 'slug').first()
                     if existing_kit:
                         existing_kits_count += 1
                         # Update kit_id if it's missing and we have one
-                        if not existing_kit.kit_id and kit_id:
-                            print(Fore.YELLOW + f"Updating kit_id for existing kit: {clean_slug} -> {kit_id}")
-                            existing_kit.kit_id = kit_id
-                            existing_kit.save()
+                        # Reload full object only if we need to update kit_id
+                        if kit_id:
+                            try:
+                                full_kit = Kit.objects.get(id=existing_kit.id)
+                                if not full_kit.kit_id:
+                                    print(Fore.YELLOW + f"Updating kit_id for existing kit: {clean_slug} -> {kit_id}")
+                                    full_kit.kit_id = kit_id
+                                    full_kit.save()
+                            except Exception:
+                                # kit_id column doesn't exist yet, skip update
+                                pass
                         continue
 
                     # Add to new kits list for parallel processing
