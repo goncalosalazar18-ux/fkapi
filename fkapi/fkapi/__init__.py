@@ -1,10 +1,15 @@
-from django.conf import settings
-
-if getattr(settings, 'ENABLE_CELERY', False):
-    try:
+try:
+    import os
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'fkapi.settings')
+    
+    import django
+    django.setup()
+    
+    from django.conf import settings
+    if getattr(settings, 'ENABLE_CELERY', False):
         from .celery import app as celery_app
         __all__ = ('celery_app',)
-    except ImportError:
+    else:
         __all__ = ()
-else:
+except Exception:
     __all__ = ()
