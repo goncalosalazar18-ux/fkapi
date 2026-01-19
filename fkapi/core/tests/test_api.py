@@ -81,7 +81,7 @@ class APITests(TestCase):
 
     def test_get_kit_json(self):
         """Test get kit details endpoint."""
-        response = self.client.get(f"/api/kit-json/{self.kit.id}")
+        response = self.client.get(f"/api/kits/{self.kit.id}")
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertIn("name", data)

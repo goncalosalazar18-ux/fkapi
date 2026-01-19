@@ -419,6 +419,75 @@ def _unaccent_filter(field: str, value: str) -> Q:
 
 
 @api.get(
+    "/clubs/{club_id}/kits",
+    response=list[KitSerializer],
+    summary="Get Club Kits",
+    description="""
+    Retrieve all kits for a specific club.
+
+    This is a nested resource endpoint following REST conventions.
+    Alternative: Use `/api/kits?club={club_id}` for more flexible filtering.
+
+    **Query Parameters:**
+    - `season` (optional): Filter kits by season ID
+    - `page` (optional): Page number for pagination
+    - `page_size` (optional): Number of items per page
+
+    Returns a list of kits for the specified club.
+    """,
+    tags=["Clubs"],
+)
+def get_club_kits(
+    request: HttpRequest,
+    club_id: int = Path(..., description="Club ID", example=1),
+    season: int | None = Query(None, description="Filter by season ID", example=1),
+    page: int = Query(1, description="Page number", ge=1),
+    page_size: int = Query(20, description="Items per page", ge=1, le=100),
+) -> list[KitSerializer]:
+    """
+    Get all kits for a specific club.
+
+    Args:
+        request: The HTTP request
+        club_id (int): ID of the club
+        season (int, optional): Filter by season ID
+        page (int): Page number for pagination
+        page_size (int): Number of items per page
+
+    Returns:
+        List[KitSerializer]: List of kits for the club
+
+    Raises:
+        ClubNotFoundError: If the club with the given ID is not found
+    """
+    from django.conf import settings
+    from django.core.paginator import Paginator
+
+    try:
+        club = Club.objects.get(id=club_id)
+    except Club.DoesNotExist as e:
+        raise ClubNotFoundError(f"club-{club_id}", f"Club with ID {club_id} not found") from e
+
+    cache_key = generate_cache_key("club_kits", club_id, "season", season, "page", page, "page_size", page_size)
+    cached_result = cache.get(cache_key)
+
+    if cached_result is not None:
+        return cached_result
+
+    kits_query = Kit.objects.filter(team=club).select_related("team", "season", "brand", "type")
+
+    if season:
+        kits_query = kits_query.filter(season__id=season)
+
+    paginator = Paginator(kits_query, page_size)
+    page_obj = paginator.get_page(page)
+    kits = list(page_obj)
+
+    cache.set(cache_key, kits, timeout=settings.CACHE_TIMEOUT_MEDIUM)
+    return kits
+
+
+@api.get(
     "/clubs/search",
     response=list[ClubSerializer],
     summary="Search Clubs",
@@ -564,40 +633,67 @@ def search_competitions(
 @api.get(
     "/kits",
     response=list[KitSerializer],
-    summary="Get Club Kits by Season",
+    summary="List Kits",
     description="""
-    Retrieve all kits for a specific club in a specific season.
+    Retrieve kits with optional filtering by club and season.
+
+    **Query Parameters:**
+    - `club` (optional): Filter kits by club ID
+    - `season` (optional): Filter kits by season ID
+    - `page` (optional): Page number for pagination
+    - `page_size` (optional): Number of items per page
+
+    **Examples:**
+    - Get all kits: `/api/kits`
+    - Get kits for a specific club: `/api/kits?club=1`
+    - Get kits for a club in a season: `/api/kits?club=1&season=5`
+    - Get kits with pagination: `/api/kits?page=1&page_size=20`
 
     The kits are returned in a list, containing all kit details including images,
     competitions, and ratings.
     """,
     tags=["Kits"],
 )
-def get_kits(
+def list_kits(
     request: HttpRequest,
-    club: int = Query(..., description="Club ID", example=1),
-    season: int = Query(..., description="Season ID", example=1),
+    club: int | None = Query(None, description="Filter by club ID", example=1),
+    season: int | None = Query(None, description="Filter by season ID", example=1),
+    page: int = Query(1, description="Page number", ge=1),
+    page_size: int = Query(20, description="Items per page", ge=1, le=100),
 ) -> list[KitSerializer]:
     """
-    Get all kits for a club in a specific season.
+    List kits with optional filtering by club and season.
 
     Args:
         request: The HTTP request
-        club (int): ID of the club
-        season (int): ID of the season
+        club (int, optional): Filter by club ID
+        season (int, optional): Filter by season ID
+        page (int): Page number for pagination
+        page_size (int): Number of items per page
 
     Returns:
         List[KitSerializer]: List of kits matching the criteria
     """
     from django.conf import settings
+    from django.core.paginator import Paginator
 
-    cache_key = generate_cache_key("kit", "club", club, "season", season)
+    cache_key = generate_cache_key("kits", "club", club, "season", season, "page", page, "page_size", page_size)
     cached_result = cache.get(cache_key)
 
     if cached_result is not None:
         return cached_result
 
-    kits = list(Kit.objects.filter(season__id=season, team__id=club).select_related("team", "season", "brand", "type"))
+    kits_query = Kit.objects.select_related("team", "season", "brand", "type")
+
+    if club:
+        kits_query = kits_query.filter(team__id=club)
+    if season:
+        kits_query = kits_query.filter(season__id=season)
+
+    paginator = Paginator(kits_query, page_size)
+    page_obj = paginator.get_page(page)
+    kits = list(page_obj)
+
     cache.set(cache_key, kits, timeout=settings.CACHE_TIMEOUT_MEDIUM)
     return kits
 
@@ -739,223 +835,6 @@ def search_seasons(
 
 
 @api.get(
-    "/kit-json/{kit_id}",
-    response=KitJsonSchema,
-    summary="Get Complete Kit Details",
-    description="""
-    Retrieve comprehensive information about a specific kit.
-
-    Returns complete kit information including:
-    - Basic kit details (name, slug)
-    - Complete team information (ID, name, slug, logos)
-    - Full season information (ID, year, first_year, second_year)
-    - Detailed competition information (ID, name, slug, logos)
-    - Kit type details (ID, name)
-    - Complete brand information (ID, name, slug, logos)
-    - Design information
-    - Color information (primary and secondary colors)
-    - Image URLs
-    """,
-    tags=["Kits"],
-)
-def get_kit_json(request: HttpRequest, kit_id: int = Path(..., description="Kit ID", example=1)) -> KitJsonSchema:
-    """
-    Get detailed information for a specific kit.
-
-    Args:
-        request: The HTTP request
-        kit_id (int): ID of the kit
-
-    Returns:
-        KitJsonSchema: Detailed kit information
-
-    Raises:
-        KitNotFoundError: If the kit with the given ID is not found
-    """
-    from django.conf import settings
-
-    cache_key = generate_cache_key("kit_json", kit_id)
-    cached_result = cache.get(cache_key)
-
-    if cached_result is not None:
-        return cached_result
-
-    try:
-        kit = get_object_or_404(Kit.objects.select_related("team", "season", "brand", "type", "primary_color").prefetch_related("competition", "secondary_color"), id=kit_id)
-    except Exception as e:
-        if 'not found' in str(e).lower() or 'does not exist' in str(e).lower():
-            raise KitNotFoundError(f"kit-{kit_id}", f"Kit with ID {kit_id} not found") from e
-        raise
-    competition_logo_default = "https://www.footballkitarchive.com/static/logos/not_found.png"
-
-    # Prepare primary color if available
-    primary_color = None
-    if kit.primary_color:
-        primary_color = ColorJsonSchema(name=kit.primary_color.name, color=kit.primary_color.color)
-
-    # Prepare secondary colors if available
-    secondary_colors = []
-    if kit.secondary_color.exists():
-        secondary_colors = [ColorJsonSchema(name=color.name, color=color.color) for color in kit.secondary_color.all()]
-
-    # Get country information if available
-    country_code = None
-    if hasattr(kit.team, "country") and kit.team.country:
-        country_code = kit.team.country.code
-
-    result = KitJsonSchema(
-        name=kit.name,
-        slug=kit.slug,
-        team=ClubJsonSchema(
-            id=kit.team.id,
-            id_fka=kit.team.id_fka,
-            name=kit.team.name,
-            slug=kit.team.slug,
-            logo=kit.team.logo,
-            logo_dark=kit.team.logo_dark,
-            country=country_code,
-        ),
-        season=SeasonJsonSchema(
-            id=kit.season.id,
-            year=kit.season.year,
-            first_year=kit.season.first_year,
-            second_year=kit.season.second_year,
-        ),
-        competition=[
-            CompetitionJsonSchema(
-                id=c.id,
-                name=c.name,
-                slug=c.slug,
-                logo=c.logo if c.logo else competition_logo_default,
-                logo_dark=c.logo_dark,
-                country=c.country.code if hasattr(c, "country") and c.country else None,
-            )
-            for c in kit.competition.all()
-        ],
-        type=TypeJsonSchema(id=kit.type.id, name=kit.type.name),
-        brand=BrandJsonSchema(
-            id=kit.brand.id,
-            name=kit.brand.name,
-            slug=kit.brand.slug,
-            logo=kit.brand.logo,
-            logo_dark=kit.brand.logo_dark,
-        ),
-        design=kit.design,
-        primary_color=primary_color,
-        secondary_color=secondary_colors,
-        main_img_url=kit.main_img_url,
-    )
-    cache.set(cache_key, result, timeout=settings.CACHE_TIMEOUT_LONG)
-    return result
-
-
-@api.get(
-    "/send-kit/{kit_id}",
-    summary="Send Kit to External API",
-    description="""
-    Send kit information to an external API endpoint.
-
-    Formats and sends the kit data to a specified external endpoint (http://localhost:8888/api/kits/).
-    Includes all kit details, team information, and related metadata.
-    """,
-    tags=["Kits"],
-)
-def send_kit(request: HttpRequest, kit_id: int = Path(..., description="Kit ID", example=1)) -> JsonResponse:
-    """
-    Send kit information to an external API.
-
-    Args:
-        request: The HTTP request
-        kit_id (int): ID of the kit to send
-
-    Returns:
-        JsonResponse: Success message and API response or error details
-
-    Raises:
-        KitNotFoundError: If the kit is not found
-        RequestException: If there's an error sending data to the external API
-    """
-    try:
-        kit = Kit.objects.select_related("team", "season", "brand", "type", "primary_color").prefetch_related("competition", "secondary_color").get(id=kit_id)
-    except Kit.DoesNotExist as e:
-        raise KitNotFoundError(f"kit-{kit_id}", f"Kit with ID {kit_id} not found") from e
-        competition_logo_default = "https://www.footballkitarchive.com/static/logos/not_found.png"
-        formatted_competitions = [
-            CompetitionJsonSchema(
-                id=comp.id,
-                name=comp.name,
-                slug=comp.slug,
-                logo=comp.logo if comp.logo else competition_logo_default,
-                logo_dark=comp.logo_dark,
-                country=comp.country.code if hasattr(comp, "country") and comp.country else None,
-            )
-            for comp in kit.competition.all()
-        ]
-
-        # Prepare primary color if available
-        primary_color = None
-        if kit.primary_color:
-            primary_color = ColorJsonSchema(name=kit.primary_color.name, color=kit.primary_color.color)
-
-        # Prepare secondary colors if available
-        secondary_colors = []
-        if kit.secondary_color.exists():
-            secondary_colors = [
-                ColorJsonSchema(name=color.name, color=color.color) for color in kit.secondary_color.all()
-            ]
-
-        # Get country information if available
-        country_code = None
-        country_name = None
-        if hasattr(kit.team, "country") and kit.team.country:
-            country_code = kit.team.country.code
-            country_name = kit.team.country.name
-
-        formatted_kit = KitJsonSchema(
-            name=kit.name,
-            slug=kit.slug,
-            team=ClubJsonSchema(
-                id=kit.team.id,
-                id_fka=kit.team.id_fka,
-                name=kit.team.name,
-                slug=kit.team.slug,
-                logo=kit.team.logo,
-                logo_dark=kit.team.logo_dark,
-                country=country_code,
-                country_name=country_name,
-            ),
-            season=SeasonJsonSchema(
-                id=kit.season.id,
-                year=kit.season.year,
-                first_year=kit.season.first_year,
-                second_year=kit.season.second_year,
-            ),
-            competition=formatted_competitions,
-            type=TypeJsonSchema(id=kit.type.id, name=kit.type.name),
-            brand=BrandJsonSchema(
-                id=kit.brand.id,
-                name=kit.brand.name,
-                slug=kit.brand.slug,
-                logo=kit.brand.logo,
-                logo_dark=kit.brand.logo_dark,
-            ),
-            design=kit.design,
-            primary_color=primary_color,
-            secondary_color=secondary_colors,
-            main_img_url=kit.main_img_url,
-        )
-
-        response = requests.post(
-            "http://localhost:8888/api/kits/", json=formatted_kit.dict(), timeout=15
-        )
-        response.raise_for_status()
-
-        return JsonResponse({"message": "Kit sent successfully", "response": response.json()})
-    except requests.RequestException as e:
-        return JsonResponse({"error": f"Error sending data to the API: {str(e)}"}, status=500)
-
-
-@api.get(
     "/kits/search",
     response=list[KitSearchResult],
     summary="Search Kits by Name and Year",
@@ -1070,6 +949,241 @@ def search_kits(request: HttpRequest, keyword: str | None = Query(None, descript
         )
     cache.set(cache_key, results, timeout=settings.CACHE_TIMEOUT_MEDIUM)
     return results
+
+
+@api.get(
+    "/kits/{kit_id}",
+    response=KitJsonSchema,
+    summary="Get Kit by ID",
+    description="""
+    Retrieve comprehensive information about a specific kit by its ID.
+
+    Returns complete kit information including:
+    - Basic kit details (name, slug)
+    - Complete team information (ID, name, slug, logos)
+    - Full season information (ID, year, first_year, second_year)
+    - Detailed competition information (ID, name, slug, logos)
+    - Kit type details (ID, name)
+    - Complete brand information (ID, name, slug, logos)
+    - Design information
+    - Color information (primary and secondary colors)
+    - Image URLs
+    """,
+    tags=["Kits"],
+)
+def get_kit(request: HttpRequest, kit_id: int = Path(..., description="Kit ID", example=1)) -> KitJsonSchema:
+    """
+    Get detailed information for a specific kit.
+
+    Args:
+        request: The HTTP request
+        kit_id (int): ID of the kit
+
+    Returns:
+        KitJsonSchema: Detailed kit information
+
+    Raises:
+        KitNotFoundError: If the kit with the given ID is not found
+    """
+    from django.conf import settings
+
+    cache_key = generate_cache_key("kit_json", kit_id)
+    cached_result = cache.get(cache_key)
+
+    if cached_result is not None:
+        return cached_result
+
+    try:
+        kit = get_object_or_404(Kit.objects.select_related("team", "season", "brand", "type", "primary_color").prefetch_related("competition", "secondary_color"), id=kit_id)
+    except Exception as e:
+        if 'not found' in str(e).lower() or 'does not exist' in str(e).lower():
+            raise KitNotFoundError(f"kit-{kit_id}", f"Kit with ID {kit_id} not found") from e
+        raise
+    competition_logo_default = "https://www.footballkitarchive.com/static/logos/not_found.png"
+
+    # Prepare primary color if available
+    primary_color = None
+    if kit.primary_color:
+        primary_color = ColorJsonSchema(name=kit.primary_color.name, color=kit.primary_color.color)
+
+    # Prepare secondary colors if available
+    secondary_colors = []
+    if kit.secondary_color.exists():
+        secondary_colors = [ColorJsonSchema(name=color.name, color=color.color) for color in kit.secondary_color.all()]
+
+    # Get country information if available
+    country_code = None
+    if hasattr(kit.team, "country") and kit.team.country:
+        country_code = kit.team.country.code
+
+    result = KitJsonSchema(
+        name=kit.name,
+        slug=kit.slug,
+        team=ClubJsonSchema(
+            id=kit.team.id,
+            id_fka=kit.team.id_fka,
+            name=kit.team.name,
+            slug=kit.team.slug,
+            logo=kit.team.logo,
+            logo_dark=kit.team.logo_dark,
+            country=country_code,
+        ),
+        season=SeasonJsonSchema(
+            id=kit.season.id,
+            year=kit.season.year,
+            first_year=kit.season.first_year,
+            second_year=kit.season.second_year,
+        ),
+        competition=[
+            CompetitionJsonSchema(
+                id=c.id,
+                name=c.name,
+                slug=c.slug,
+                logo=c.logo if c.logo else competition_logo_default,
+                logo_dark=c.logo_dark,
+                country=c.country.code if hasattr(c, "country") and c.country else None,
+            )
+            for c in kit.competition.all()
+        ],
+        type=TypeJsonSchema(id=kit.type.id, name=kit.type.name),
+        brand=BrandJsonSchema(
+            id=kit.brand.id,
+            name=kit.brand.name,
+            slug=kit.brand.slug,
+            logo=kit.brand.logo,
+            logo_dark=kit.brand.logo_dark,
+        ),
+        design=kit.design,
+        primary_color=primary_color,
+        secondary_color=secondary_colors,
+        main_img_url=kit.main_img_url,
+    )
+    cache.set(cache_key, result, timeout=settings.CACHE_TIMEOUT_LONG)
+    return result
+
+
+@api.get(
+    "/kit-json/{kit_id}",
+    response=KitJsonSchema,
+    summary="Get Kit by ID (Legacy)",
+    description="""
+    **⚠️ Deprecated**: This endpoint is maintained for backward compatibility.
+    Please use `/api/kits/{kit_id}` instead.
+
+    Retrieve comprehensive information about a specific kit by its ID.
+    """,
+    tags=["Kits"],
+    deprecated=True,
+)
+def get_kit_json_legacy(request: HttpRequest, kit_id: int = Path(..., description="Kit ID", example=1)) -> KitJsonSchema:
+    """Legacy endpoint - redirects to get_kit."""
+    return get_kit(request, kit_id)
+
+
+@api.get(
+    "/send-kit/{kit_id}",
+    summary="Send Kit to External API",
+    description="""
+    Send kit information to an external API endpoint.
+
+    Formats and sends the kit data to a specified external endpoint (http://localhost:8888/api/kits/).
+    Includes all kit details, team information, and related metadata.
+    """,
+    tags=["Kits"],
+)
+def send_kit(request: HttpRequest, kit_id: int = Path(..., description="Kit ID", example=1)) -> JsonResponse:
+    """
+    Send kit information to an external API.
+
+    Args:
+        request: The HTTP request
+        kit_id (int): ID of the kit to send
+
+    Returns:
+        JsonResponse: Success message and API response or error details
+
+    Raises:
+        KitNotFoundError: If the kit is not found
+        RequestException: If there's an error sending data to the external API
+    """
+    try:
+        kit = Kit.objects.select_related("team", "season", "brand", "type", "primary_color").prefetch_related("competition", "secondary_color").get(id=kit_id)
+    except Kit.DoesNotExist as e:
+        raise KitNotFoundError(f"kit-{kit_id}", f"Kit with ID {kit_id} not found") from e
+        competition_logo_default = "https://www.footballkitarchive.com/static/logos/not_found.png"
+        formatted_competitions = [
+            CompetitionJsonSchema(
+                id=comp.id,
+                name=comp.name,
+                slug=comp.slug,
+                logo=comp.logo if comp.logo else competition_logo_default,
+                logo_dark=comp.logo_dark,
+                country=comp.country.code if hasattr(comp, "country") and comp.country else None,
+            )
+            for comp in kit.competition.all()
+        ]
+
+        # Prepare primary color if available
+        primary_color = None
+        if kit.primary_color:
+            primary_color = ColorJsonSchema(name=kit.primary_color.name, color=kit.primary_color.color)
+
+        # Prepare secondary colors if available
+        secondary_colors = []
+        if kit.secondary_color.exists():
+            secondary_colors = [
+                ColorJsonSchema(name=color.name, color=color.color) for color in kit.secondary_color.all()
+            ]
+
+        # Get country information if available
+        country_code = None
+        country_name = None
+        if hasattr(kit.team, "country") and kit.team.country:
+            country_code = kit.team.country.code
+            country_name = kit.team.country.name
+
+        formatted_kit = KitJsonSchema(
+            name=kit.name,
+            slug=kit.slug,
+            team=ClubJsonSchema(
+                id=kit.team.id,
+                id_fka=kit.team.id_fka,
+                name=kit.team.name,
+                slug=kit.team.slug,
+                logo=kit.team.logo,
+                logo_dark=kit.team.logo_dark,
+                country=country_code,
+                country_name=country_name,
+            ),
+            season=SeasonJsonSchema(
+                id=kit.season.id,
+                year=kit.season.year,
+                first_year=kit.season.first_year,
+                second_year=kit.season.second_year,
+            ),
+            competition=formatted_competitions,
+            type=TypeJsonSchema(id=kit.type.id, name=kit.type.name),
+            brand=BrandJsonSchema(
+                id=kit.brand.id,
+                name=kit.brand.name,
+                slug=kit.brand.slug,
+                logo=kit.brand.logo,
+                logo_dark=kit.brand.logo_dark,
+            ),
+            design=kit.design,
+            primary_color=primary_color,
+            secondary_color=secondary_colors,
+            main_img_url=kit.main_img_url,
+        )
+
+        response = requests.post(
+            "http://localhost:8888/api/kits/", json=formatted_kit.dict(), timeout=15
+        )
+        response.raise_for_status()
+
+        return JsonResponse({"message": "Kit sent successfully", "response": response.json()})
+    except requests.RequestException as e:
+        return JsonResponse({"error": f"Error sending data to the API: {str(e)}"}, status=500)
 
 
 @api.get(

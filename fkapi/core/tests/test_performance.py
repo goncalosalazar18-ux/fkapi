@@ -122,7 +122,7 @@ class DatabasePerformanceTests(TestCase):
         """Test that get_kit_json uses select_related and prefetch_related."""
         reset_queries()
 
-        response = self.client.get(f'/api/kit-json/{self.kit.id}')
+        response = self.client.get(f'/api/kits/{self.kit.id}')
 
         self.assertEqual(response.status_code, 200)
         query_count = len(connection.queries)
