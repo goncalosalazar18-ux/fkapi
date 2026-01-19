@@ -58,6 +58,9 @@ def scrape_kit_task(slug: str, kit_id: str | None = None, use_proxy: bool = Fals
         slug: Kit slug
         kit_id: Optional kit ID
         use_proxy: Whether to use proxy for requests
+
+    Returns:
+        dict with 'success' and 'kit_id' keys, or None if failed
     """
     from core.scrapers import scrape_kit
 
@@ -66,10 +69,11 @@ def scrape_kit_task(slug: str, kit_id: str | None = None, use_proxy: bool = Fals
         result = scrape_kit(slug, kit_id=kit_id, use_proxy=use_proxy)
         if result:
             logger.info(f"Successfully scraped kit: {slug}")
+            return {'success': True, 'kit_id': result.id, 'slug': slug}
         else:
             logger.warning(f"Failed to scrape kit: {slug}")
-        return result
+            return {'success': False, 'slug': slug}
     except Exception as e:
         logger.error(f"Error in scrape_kit_task for slug {slug}: {str(e)}")
-        raise
+        return {'success': False, 'slug': slug, 'error': str(e)}
 

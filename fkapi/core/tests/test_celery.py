@@ -162,8 +162,14 @@ class TestCeleryTasks(TestCase):
 
     @patch('core.scrapers.scrape_kit')
     def test_scrape_kit_task_calls_scraper(self, mock_scrape_kit):
-        """Test that scrape_kit_task calls scrape_kit with correct parameters."""
-        mock_scrape_kit.return_value = True
+        """Test that scrape_kit_task calls scrape_kit with correct parameters and returns a serializable result."""
+        # Mock scrape_kit to return an object with an id attribute (like a Kit instance)
+        class DummyKit:
+            def __init__(self, id):
+                self.id = id
+
+        mock_scrape_kit.return_value = DummyKit(id=42)
+
         result = scrape_kit_task('test-slug', kit_id='123', use_proxy=True)
         # Verify scrape_kit was called with correct parameters
         mock_scrape_kit.assert_called_once()
@@ -172,7 +178,11 @@ class TestCeleryTasks(TestCase):
         assert call_kwargs['use_proxy'] is True
         # First positional arg should be the slug
         assert mock_scrape_kit.call_args[0][0] == 'test-slug'
-        assert result is True
+        # The task should return a JSON-serializable dict, not a Kit instance
+        assert isinstance(result, dict)
+        assert result['success'] is True
+        assert result['kit_id'] == 42
+        assert result['slug'] == 'test-slug'
 
 
 class TestCeleryFallback(TestCase):

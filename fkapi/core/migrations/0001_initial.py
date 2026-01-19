@@ -7,6 +7,43 @@ import django_countries.fields
 from django.db import migrations, models
 
 
+def seed_initial_colors(apps, schema_editor):
+    """
+    Seed a basic palette of colors matching the naming used on Football Kit Archive.
+
+    These names are the human-readable labels that appear on the web
+    (e.g. "Off-white / Claret"), so that lookups by name in the scraper
+    match exactly one Color instance.
+    """
+    Color = apps.get_model("core", "Color")
+
+    initial_colors = [
+        ("White", "#FFFFFF"),
+        ("Red", "#FF0000"),
+        ("Blue", "#0000FF"),
+        ("Black", "#000000"),
+        ("Yellow", "#FFFF00"),
+        ("Green", "#008000"),
+        ("Sky blue", "#87CEEB"),
+        ("Navy", "#000080"),
+        ("Orange", "#FFA500"),
+        ("Gray", "#808080"),
+        ("Claret", "#7F1734"),
+        ("Purple", "#800080"),
+        ("Pink", "#FFC0CB"),
+        ("Brown", "#964B00"),
+        ("Gold", "#BFAB40"),
+        ("Silver", "#C0C0C0"),
+        ("Off-white", "#F5F5F5"),
+    ]
+
+    for name, hex_code in initial_colors:
+        Color.objects.get_or_create(
+            name=name,
+            defaults={"color": hex_code},
+        )
+
+
 class Migration(migrations.Migration):
 
     initial = True
@@ -118,4 +155,5 @@ class Migration(migrations.Migration):
                 'indexes': [models.Index(fields=['name'], name='core_kit_name_3eb483_idx'), models.Index(fields=['team', 'season'], name='core_kit_team_id_9eebfc_idx'), models.Index(fields=['main_img_url'], name='core_kit_main_im_8c0fb8_idx'), models.Index(fields=['web_updated'], name='core_kit_web_upd_ea3d44_idx'), models.Index(fields=['last_updated'], name='core_kit_last_up_08eed5_idx'), models.Index(fields=['rating'], name='core_kit_rating_e7d577_idx')],
             },
         ),
+        migrations.RunPython(seed_initial_colors, migrations.RunPython.noop),
     ]
