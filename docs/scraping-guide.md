@@ -190,8 +190,8 @@ headers = {
    HTTP_MAX_RETRIES=3
    HTTP_BACKOFF_FACTOR=0.5
    
-   # Optional: Use proxy to distribute load
-   # WEBSHARE_PROXY_URL=http://user:pass@proxy.webshare.io:80/
+   # Optional: Use an HTTP proxy to distribute load (from any provider)
+   # PROXY_URL=http://user:pass@proxy.example.com:8080/
    ```
 
 3. **Test Single Request**
@@ -611,8 +611,8 @@ if path_is_allowed(path):
 DELAY_MIN=5  # Increase from 2
 DELAY_MAX=10  # Increase from 5
 
-# Add proxy if needed
-WEBSHARE_PROXY_URL=http://user:pass@proxy.webshare.io:80/
+# Add proxy if needed (generic HTTP proxy provider)
+PROXY_URL=http://user:pass@proxy.example.com:8080/
 ```
 
 ### Issue: 500/502/503 Errors

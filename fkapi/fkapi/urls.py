@@ -18,6 +18,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path
+from django.views.generic import RedirectView
 
 from core.views import (
     assign_countries,
@@ -40,7 +41,8 @@ from core.views_docs import docs_index, docs_view
 from .api import api
 
 urlpatterns = [
-    path('', random_kits_view, name='home'),  # Redirect root to random kits
+    # Redirect API root to interactive API docs
+    path('', RedirectView.as_view(url='/api/docs', permanent=False), name='home'),
     path('admin/', admin.site.urls),
     path('api/', api.urls),
     path('docs/', docs_index, name='docs_index'),

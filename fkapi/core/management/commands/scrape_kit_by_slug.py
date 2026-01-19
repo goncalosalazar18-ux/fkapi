@@ -5,32 +5,34 @@ from core.scrapers import scrape_kit
 
 
 class Command(BaseCommand):
-    help = 'Scrapea un kit específico por su slug'
+    help = 'Scrape a specific kit by its slug'
 
     def add_arguments(self, parser):
-        parser.add_argument('slug', type=str, help='Slug del kit a scrapear')
+        parser.add_argument('slug', type=str, help='Slug of the kit to scrape')
         parser.add_argument(
             '--force',
             action='store_true',
-            help='Forzar rescrapeo incluso si el kit ya existe y usar proxy'
+            help='Force rescraping even if the kit already exists and use proxy'
         )
 
     def handle(self, *args, **options):
         slug = options['slug']
         use_proxy = options['force']
 
-        self.stdout.write(f"Iniciando scrapeo para slug: {slug}")
+        self.stdout.write(f"Starting scrape for slug: {slug}")
 
-        # Verificar si el kit ya existe
+        # Check if the kit already exists
         if Kit.objects.filter(slug=slug).exists() and not use_proxy:
-            self.stdout.write(self.style.WARNING(f"El kit con slug {slug} ya existe. Usa --force para actualizarlo."))
+            self.stdout.write(self.style.WARNING(
+                f"Kit with slug {slug} already exists. Use --force to update it."
+            ))
             return
 
         try:
             result = scrape_kit(slug, use_proxy=use_proxy)
             if isinstance(result, Kit):
-                self.stdout.write(self.style.SUCCESS(f"Kit {slug} scrapeado exitosamente!"))
+                self.stdout.write(self.style.SUCCESS(f"Kit {slug} scraped successfully!"))
             else:
-                self.stdout.write(self.style.ERROR(f"Error al scrapear {slug}: No se pudo obtener el kit"))
+                self.stdout.write(self.style.ERROR(f"Error scraping {slug}: Could not obtain the kit"))
         except Exception as e:
-            self.stdout.write(self.style.ERROR(f"Error fatal al scrapear {slug}: {str(e)}"))
+            self.stdout.write(self.style.ERROR(f"Fatal error scraping {slug}: {str(e)}"))

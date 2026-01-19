@@ -24,9 +24,9 @@ def get_proxy() -> dict | None:
       - PROXY_HOST/PROXY_PORT with optional PROXY_USERNAME/PROXY_PASSWORD
 
     Examples:
-      PROXY_URLS="http://user:pass@p.webshare.io:80, http://user:pass@p2.example:8080"
-      PROXY_URL="http://user:pass@p.webshare.io:80"
-      PROXY_HOST="p.webshare.io" PROXY_PORT="80" PROXY_USERNAME="user" PROXY_PASSWORD="pass"
+      PROXY_URLS="http://user:pass@proxy1.example.com:80, http://user:pass@proxy2.example.com:8080"
+      PROXY_URL="http://user:pass@proxy1.example.com:80"
+      PROXY_HOST="proxy1.example.com" PROXY_PORT="80" PROXY_USERNAME="user" PROXY_PASSWORD="pass"
 
     Returns None if no proxy configuration is present.
     """
