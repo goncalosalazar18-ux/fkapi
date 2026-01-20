@@ -6,12 +6,11 @@ from contextlib import contextmanager
 from typing import Any
 
 # Third-party imports
-import requests
 from django.conf import settings
 from django.core.cache import cache
 from django.db import connection, transaction
 from django.db.models import Q
-from django.http import HttpRequest, JsonResponse
+from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
 from ninja import NinjaAPI, Path, Query, Schema
 from ninja_apikey.security import APIKeyAuth
@@ -853,6 +852,7 @@ def list_kits(
     if second_year:
         kits_query = kits_query.filter(season__second_year=str(second_year))
 
+    kits_query = kits_query.order_by('-id')
     paginator = Paginator(kits_query, page_size)
     page_obj = paginator.get_page(page)
     kits = list(page_obj)
@@ -1241,170 +1241,6 @@ def get_kit(request: HttpRequest, kit_id: int = Path(..., description="Kit ID", 
 def get_kit_json_legacy(request: HttpRequest, kit_id: int = Path(..., description="Kit ID", example=1)) -> KitJsonSchema:
     """Legacy endpoint - redirects to get_kit."""
     return get_kit(request, kit_id)
-
-
-@api.get(
-    "/send-kit/{kit_id}",
-    summary="Send Kit to External API",
-    description="""
-    Send kit information to an external API endpoint.
-
-    Formats and sends the kit data to a specified external endpoint (http://localhost:8888/api/kits/).
-    Includes all kit details, team information, and related metadata.
-    """,
-    tags=["Kits"],
-)
-def send_kit(request: HttpRequest, kit_id: int = Path(..., description="Kit ID", example=1)) -> JsonResponse:
-    """
-    Send kit information to an external API.
-
-    Args:
-        request: The HTTP request
-        kit_id (int): ID of the kit to send
-
-    Returns:
-        JsonResponse: Success message and API response or error details
-
-    Raises:
-        KitNotFoundError: If the kit is not found
-        RequestException: If there's an error sending data to the external API
-    """
-    try:
-        kit = Kit.objects.select_related("team", "season", "brand", "type", "primary_color").prefetch_related("competition", "secondary_color").get(id=kit_id)
-    except Kit.DoesNotExist as e:
-        raise KitNotFoundError(f"kit-{kit_id}", f"Kit with ID {kit_id} not found") from e
-        competition_logo_default = "https://www.footballkitarchive.com/static/logos/not_found.png"
-        formatted_competitions = [
-            CompetitionJsonSchema(
-                id=comp.id,
-                name=comp.name,
-                slug=comp.slug,
-                logo=comp.logo if comp.logo else competition_logo_default,
-                logo_dark=comp.logo_dark,
-                country=comp.country.code if hasattr(comp, "country") and comp.country else None,
-            )
-            for comp in kit.competition.all()
-        ]
-
-        # Prepare primary color if available
-        primary_color = None
-        if kit.primary_color:
-            primary_color = ColorJsonSchema(name=kit.primary_color.name, color=kit.primary_color.color)
-
-        # Prepare secondary colors if available
-        secondary_colors = []
-        if kit.secondary_color.exists():
-            secondary_colors = [
-                ColorJsonSchema(name=color.name, color=color.color) for color in kit.secondary_color.all()
-            ]
-
-        # Get country information if available
-        country_code = None
-        country_name = None
-        if hasattr(kit.team, "country") and kit.team.country:
-            country_code = kit.team.country.code
-            country_name = kit.team.country.name
-
-        formatted_kit = KitJsonSchema(
-            name=kit.name,
-            slug=kit.slug,
-            team=ClubJsonSchema(
-                id=kit.team.id,
-                id_fka=kit.team.id_fka,
-                name=kit.team.name,
-                slug=kit.team.slug,
-                logo=kit.team.logo,
-                logo_dark=kit.team.logo_dark,
-                country=country_code,
-                country_name=country_name,
-            ),
-            season=SeasonJsonSchema(
-                id=kit.season.id,
-                year=kit.season.year,
-                first_year=kit.season.first_year,
-                second_year=kit.season.second_year,
-            ),
-            competition=formatted_competitions,
-            type=TypeJsonSchema(id=kit.type.id, name=kit.type.name),
-            brand=BrandJsonSchema(
-                id=kit.brand.id,
-                name=kit.brand.name,
-                slug=kit.brand.slug,
-                logo=kit.brand.logo,
-                logo_dark=kit.brand.logo_dark,
-            ),
-            design=kit.design,
-            primary_color=primary_color,
-            secondary_color=secondary_colors,
-            main_img_url=kit.main_img_url,
-        )
-
-        response = requests.post(
-            "http://localhost:8888/api/kits/", json=formatted_kit.dict(), timeout=15
-        )
-        response.raise_for_status()
-
-        return JsonResponse({"message": "Kit sent successfully", "response": response.json()})
-    except requests.RequestException as e:
-        return JsonResponse({"error": f"Error sending data to the API: {str(e)}"}, status=500)
-
-
-@api.get(
-    "/test-search",
-    summary="Test Search Functionality",
-    description="""
-    Test endpoint to verify search functionality with specific examples.
-    Tests the search with "burinam" to see if it finds "buriram".
-    """,
-    tags=["Testing"],
-)
-def test_search(request: HttpRequest) -> JsonResponse:
-    """
-    Test endpoint to verify search functionality.
-    """
-    from django.contrib.postgres.search import TrigramSimilarity
-
-    # Test data
-    test_cases = [
-        ("burinam", "buriram"),
-        ("manchester", "manchester"),
-        ("barcelona", "barcelona"),
-    ]
-
-    results = {}
-
-    for search_term, expected_match in test_cases:
-        # Get all kits
-        all_kits = Kit.objects.all()
-
-        # Calculate similarity for each kit
-        kits_with_similarity = (
-            all_kits.annotate(similarity=TrigramSimilarity("name", search_term))
-            .filter(similarity__gt=0.1)
-            .order_by("-similarity")[:5]
-        )
-
-        # Format results
-        kit_results = []
-        for kit in kits_with_similarity:
-            kit_results.append(
-                {"id": kit.id, "name": kit.name, "similarity": float(kit.similarity), "team": kit.team.name}
-            )
-
-        results[search_term] = {
-            "expected_match": expected_match,
-            "found_kits": kit_results,
-            "best_match": kit_results[0] if kit_results else None,
-        }
-
-    return JsonResponse(
-        {
-            "test_results": results,
-            "message": 'Search test completed. Check if "burinam" finds "buriram" with good similarity.',
-        }
-    )
-
-
 @api.get(
     "/random-kits/",
     summary="Get Random Kits",

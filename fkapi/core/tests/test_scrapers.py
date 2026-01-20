@@ -556,8 +556,9 @@ class ScraperTests(TestCase):
                 self.assertEqual(season.first_year, expected["first_year"])
                 self.assertEqual(season.second_year, expected["second_year"])
 
+    @patch('core.scrapers.time.sleep', return_value=None)
     @patch('core.scrapers.http_get')
-    def test_scrape_competition(self, mock_http_get):
+    def test_scrape_competition(self, mock_http_get, mock_sleep):
         """Test scraping competition details."""
         test_cases = [
             {
