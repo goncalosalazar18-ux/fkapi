@@ -12,6 +12,7 @@ import logging
 from typing import Any
 
 from django.db.models.signals import post_delete, post_save
+from django_redis import get_redis_connection
 
 from core.models import Brand, Club, Competition, Kit, Season
 
