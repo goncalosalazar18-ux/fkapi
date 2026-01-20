@@ -110,6 +110,7 @@ class KitsService:
         main_img_url: str,
         design: str | None = None,
         kit_id: str | None = None,
+        existing_kit_id: int | None = None,
     ) -> tuple[Kit, bool]:
         """
         Create or update a kit in the database.
@@ -131,12 +132,27 @@ class KitsService:
         """
         clean_slug = slug.strip("/").split("/")[0]
 
-        # Check if kit already exists with this team, season, and type
-        existing_kit = Kit.objects.filter(team=team, season=season, type=type_k).first()
+        # If we're updating a specific kit, find it by ID first
+        existing_kit = None
+        if existing_kit_id:
+            try:
+                existing_kit = Kit.objects.get(id=existing_kit_id)
+            except Kit.DoesNotExist:
+                pass
+
+        # If not found by ID, check if kit already exists with this team, season, and type
+        if not existing_kit:
+            existing_kit = Kit.objects.filter(team=team, season=season, type=type_k).first()
 
         if existing_kit:
-            # Kit already exists, but check if slug, kit_id, or design needs updating
+            # Kit already exists, update all fields
             needs_update = False
+
+            if existing_kit.name != kit_name:
+                logger.debug(f"Updating name: {existing_kit.name} -> {kit_name}")
+                existing_kit.name = kit_name
+                needs_update = True
+
             if existing_kit.slug != clean_slug:
                 # Only update slug if it doesn't conflict with another kit
                 if not Kit.objects.filter(slug=clean_slug).exclude(id=existing_kit.id).exists():
@@ -156,8 +172,25 @@ class KitsService:
                 existing_kit.design = design
                 needs_update = True
 
+            if existing_kit.rating != rating:
+                logger.debug(f"Updating rating: {existing_kit.rating} -> {rating}")
+                existing_kit.rating = rating
+                needs_update = True
+
+            if existing_kit.main_img_url != main_img_url:
+                logger.debug(f"Updating main_img_url: {existing_kit.main_img_url} -> {main_img_url}")
+                existing_kit.main_img_url = main_img_url
+                needs_update = True
+
+            if existing_kit.brand != brand:
+                logger.debug(f"Updating brand: {existing_kit.brand} -> {brand}")
+                existing_kit.brand = brand
+                needs_update = True
+
             if needs_update:
                 existing_kit.save()
+            else:
+                logger.debug(f"Kit {existing_kit.slug} already up to date")
 
             return existing_kit, False
         else:

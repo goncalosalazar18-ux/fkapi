@@ -23,6 +23,7 @@ from core.exceptions import (
     KitNotFoundError,
     RateLimitExceededError,
     ScrapingError,
+    ValidationError,
 )
 from core.models import Brand, Club, Competition, Kit, Season
 from core.serializers import (
@@ -179,6 +180,8 @@ def scraping_error_handler(request: HttpRequest, exc: ScrapingError) -> Any:
     elif isinstance(exc, ClubNotFoundError):
         return api.create_response(request, {"detail": str(exc)}, status=404)
     elif isinstance(exc, InvalidSeasonError):
+        return api.create_response(request, {"detail": str(exc)}, status=400)
+    elif isinstance(exc, ValidationError):
         return api.create_response(request, {"detail": str(exc)}, status=400)
     elif isinstance(exc, RateLimitExceededError):
         return api.create_response(request, {"detail": str(exc)}, status=403)
@@ -630,24 +633,105 @@ def search_competitions(
     return result
 
 
+# Available colors for filtering (hardcoded list)
+AVAILABLE_COLORS = [
+    "White",
+    "Red",
+    "Blue",
+    "Black",
+    "Yellow",
+    "Green",
+    "Sky blue",
+    "Navy",
+    "Orange",
+    "Gray",
+    "Claret",
+    "Purple",
+    "Pink",
+    "Brown",
+    "Gold",
+    "Silver",
+    "Off-white",
+]
+
+# Available designs for filtering (hardcoded list - matches DB format)
+AVAILABLE_DESIGNS = [
+    "Plain",
+    "Stripes",
+    "Graphic",
+    "Chest band",
+    "Contrasting sleeves",
+    "Pinstripes",
+    "Hoops",
+    "Single stripe",
+    "Half-and-half",
+    "Sash",
+    "Chevron",
+    "Checkers",
+    "Gradient",
+    "Diagonal",
+    "Cross",
+    "Quarters",
+]
+
+# Pre-computed strings for Query descriptions (to avoid function calls in defaults)
+AVAILABLE_COLORS_STR = ', '.join(AVAILABLE_COLORS)
+AVAILABLE_DESIGNS_STR = ', '.join(AVAILABLE_DESIGNS)
+
+# Query objects for list_kits endpoint (to avoid function calls in argument defaults)
+_QUERY_CLUB = Query(None, description="Filter by club ID", example=1)
+_QUERY_SEASON = Query(None, description="Filter by season ID", example=1)
+_QUERY_COUNTRY = Query(None, description="Filter by club country (ISO 2-letter code)", example="ES")
+_QUERY_PRIMARY_COLOR = Query(None, description=f"Filter by primary color. Options: {AVAILABLE_COLORS_STR}", example="Red")
+_QUERY_SECONDARY_COLOR = Query(None, description=f"Filter by secondary color(s). Can specify multiple. Options: {AVAILABLE_COLORS_STR}", example=["White", "Blue"])
+_QUERY_DESIGN = Query(None, description=f"Filter by design pattern. Options: {AVAILABLE_DESIGNS_STR}", example="Stripes")
+_QUERY_YEAR = Query(None, description="Filter by year (searches in first_year and second_year)", example=2024)
+_QUERY_FIRST_YEAR = Query(None, description="Filter by season first year", example=2024)
+_QUERY_SECOND_YEAR = Query(None, description="Filter by season second year (use with first_year for exact match)", example=2025)
+_QUERY_PAGE = Query(1, description="Page number", ge=1)
+_QUERY_PAGE_SIZE = Query(20, description="Items per page", ge=1, le=100)
+
+
 @api.get(
     "/kits",
     response=list[KitSerializer],
     summary="List Kits",
-    description="""
-    Retrieve kits with optional filtering by club and season.
+    description=f"""
+    Retrieve kits with advanced filtering options.
 
-    **Query Parameters:**
-    - `club` (optional): Filter kits by club ID
-    - `season` (optional): Filter kits by season ID
-    - `page` (optional): Page number for pagination
-    - `page_size` (optional): Number of items per page
+    **Filtering Parameters:**
+
+    **Basic Filters:**
+    - `club` (int, optional): Filter kits by club ID
+    - `season` (int, optional): Filter kits by season ID
+    - `country` (str, optional): Filter kits by club country (ISO 2-letter code, e.g., "ES", "GB", "FR")
+
+    **Color Filters:**
+    - `primary_color` (str, optional): Filter by primary color name. Available options: {AVAILABLE_COLORS_STR}
+    - `secondary_color` (str, optional): Filter by secondary color name. Can be specified multiple times. Available options: {AVAILABLE_COLORS_STR}
+
+    **Design Filter:**
+    - `design` (str, optional): Filter by design pattern. Available options: {AVAILABLE_DESIGNS_STR}
+
+    **Year/Season Filters:**
+    - `year` (int, optional): Filter by year. Searches in both first_year and second_year of seasons (e.g., 2024 matches "2024-25" and "2023-24")
+    - `first_year` (int, optional): Filter by season first year (e.g., 2024 for "2024-25")
+    - `second_year` (int, optional): Filter by season second year (e.g., 2025 for "2024-25"). Use with `first_year` for exact season match
+
+    **Pagination:**
+    - `page` (int, default: 1): Page number
+    - `page_size` (int, default: 20, max: 100): Number of items per page
 
     **Examples:**
     - Get all kits: `/api/kits`
     - Get kits for a specific club: `/api/kits?club=1`
-    - Get kits for a club in a season: `/api/kits?club=1&season=5`
-    - Get kits with pagination: `/api/kits?page=1&page_size=20`
+    - Get kits by primary color: `/api/kits?primary_color=Red`
+    - Get kits by secondary color: `/api/kits?secondary_color=White&secondary_color=Blue`
+    - Get kits by design: `/api/kits?design=Stripes`
+    - Get kits by year: `/api/kits?year=2024`
+    - Get kits by exact season: `/api/kits?first_year=2024&second_year=2025`
+    - Get kits by country: `/api/kits?country=ES`
+    - Combined filters: `/api/kits?primary_color=Red&year=2024&country=ES&design=Stripes`
 
     The kits are returned in a list, containing all kit details including images,
     competitions, and ratings.
@@ -656,20 +740,34 @@ def search_competitions(
 )
 def list_kits(
     request: HttpRequest,
-    club: int | None = Query(None, description="Filter by club ID", example=1),
-    season: int | None = Query(None, description="Filter by season ID", example=1),
-    page: int = Query(1, description="Page number", ge=1),
-    page_size: int = Query(20, description="Items per page", ge=1, le=100),
+    club: int | None = _QUERY_CLUB,
+    season: int | None = _QUERY_SEASON,
+    country: str | None = _QUERY_COUNTRY,
+    primary_color: str | None = _QUERY_PRIMARY_COLOR,
+    secondary_color: list[str] | None = _QUERY_SECONDARY_COLOR,
+    design: str | None = _QUERY_DESIGN,
+    year: int | None = _QUERY_YEAR,
+    first_year: int | None = _QUERY_FIRST_YEAR,
+    second_year: int | None = _QUERY_SECOND_YEAR,
+    page: int = _QUERY_PAGE,
+    page_size: int = _QUERY_PAGE_SIZE,
 ) -> list[KitSerializer]:
     """
-    List kits with optional filtering by club and season.
+    List kits with advanced filtering options.
 
     Args:
         request: The HTTP request
-        club (int, optional): Filter by club ID
-        season (int, optional): Filter by season ID
-        page (int): Page number for pagination
-        page_size (int): Number of items per page
+        club: Filter by club ID
+        season: Filter by season ID
+        country: Filter by club country (ISO 2-letter code)
+        primary_color: Filter by primary color name
+        secondary_color: Filter by secondary color name(s) - can be multiple
+        design: Filter by design pattern
+        year: Filter by year (searches in first_year and second_year)
+        first_year: Filter by season first year
+        second_year: Filter by season second year
+        page: Page number for pagination
+        page_size: Number of items per page
 
     Returns:
         List[KitSerializer]: List of kits matching the criteria
@@ -677,18 +775,73 @@ def list_kits(
     from django.conf import settings
     from django.core.paginator import Paginator
 
-    cache_key = generate_cache_key("kits", "club", club, "season", season, "page", page, "page_size", page_size)
+    from core.models import Color
+
+    cache_key = generate_cache_key(
+        "kits",
+        "club", club,
+        "season", season,
+        "country", country,
+        "primary_color", primary_color,
+        "secondary_color", secondary_color,
+        "design", design,
+        "year", year,
+        "first_year", first_year,
+        "second_year", second_year,
+        "page", page,
+        "page_size", page_size,
+    )
     cached_result = cache.get(cache_key)
 
     if cached_result is not None:
         return cached_result
 
-    kits_query = Kit.objects.select_related("team", "season", "brand", "type")
+    kits_query = Kit.objects.select_related("team", "season", "brand", "type", "primary_color").prefetch_related("secondary_color")
 
     if club:
         kits_query = kits_query.filter(team__id=club)
     if season:
         kits_query = kits_query.filter(season__id=season)
+    if country:
+        kits_query = kits_query.filter(team__country=country.upper())
+    if primary_color:
+        if primary_color not in AVAILABLE_COLORS:
+            raise ValidationError(
+                f"Invalid primary_color '{primary_color}'. Available options: {', '.join(AVAILABLE_COLORS)}"
+            )
+        try:
+            color_obj = Color.objects.get(name=primary_color)
+            kits_query = kits_query.filter(primary_color=color_obj)
+        except Color.DoesNotExist:
+            kits_query = kits_query.none()
+    if secondary_color:
+        invalid_colors = [c for c in secondary_color if c not in AVAILABLE_COLORS]
+        if invalid_colors:
+            raise ValidationError(
+                f"Invalid secondary_color(s): {', '.join(invalid_colors)}. Available options: {', '.join(AVAILABLE_COLORS)}"
+            )
+        color_objs = list(Color.objects.filter(name__in=secondary_color))
+        if len(color_objs) == len(secondary_color):
+            for color_obj in color_objs:
+                kits_query = kits_query.filter(secondary_color=color_obj)
+            kits_query = kits_query.distinct()
+        else:
+            kits_query = kits_query.none()
+    if design:
+        design_normalized = design.strip()
+        if design_normalized not in AVAILABLE_DESIGNS:
+            raise ValidationError(
+                f"Invalid design '{design}'. Available options: {', '.join(AVAILABLE_DESIGNS)}"
+            )
+        kits_query = kits_query.filter(design=design_normalized)
+    if year:
+        kits_query = kits_query.filter(
+            Q(season__first_year=str(year)) | Q(season__second_year=str(year))
+        )
+    if first_year:
+        kits_query = kits_query.filter(season__first_year=str(first_year))
+    if second_year:
+        kits_query = kits_query.filter(season__second_year=str(second_year))
 
     paginator = Paginator(kits_query, page_size)
     page_obj = paginator.get_page(page)

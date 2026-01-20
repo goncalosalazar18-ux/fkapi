@@ -18,7 +18,7 @@ class ScrapingService:
     """Service for orchestrating scraping operations."""
 
     @staticmethod
-    def process_kit_data(data: KitPageData, slug: str, kit_id: str | None, use_proxy: bool = False) -> Kit | None:
+    def process_kit_data(data: KitPageData, slug: str, kit_id: str | None, use_proxy: bool = False, existing_kit_id: int | None = None) -> Kit | None:
         """
         Process scraped kit data and create/update kit in database.
 
@@ -27,6 +27,7 @@ class ScrapingService:
             slug: Kit slug
             kit_id: Optional kit ID
             use_proxy: Whether to use proxy
+            existing_kit_id: ID of existing kit to update (for re-scraping)
 
         Returns:
             Kit object if successful, None otherwise
@@ -77,6 +78,7 @@ class ScrapingService:
                     main_img_url=data.main_img_url,
                     design=data.design,
                     kit_id=kit_id,
+                    existing_kit_id=existing_kit_id,
                 )
 
                 # Process competitions

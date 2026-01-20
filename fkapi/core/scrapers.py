@@ -331,7 +331,7 @@ def get_season_e(season_slug: str) -> Season:
     return get_season(season_slug)
 
 
-def scrape_kit(slug: str, kit_id: str | None = None, use_proxy: bool = False) -> Kit | None:
+def scrape_kit(slug: str, kit_id: str | None = None, use_proxy: bool = False, existing_kit_id: int | None = None) -> Kit | None:
     """
     Scrapes a kit from footballkitarchive.com using its slug and optional kit_id.
 
@@ -339,6 +339,7 @@ def scrape_kit(slug: str, kit_id: str | None = None, use_proxy: bool = False) ->
         slug (str): The kit's base slug from the URL
         kit_id (str, optional): The kit's ID for new format URLs. Defaults to None.
         use_proxy (bool, optional): Whether to use a proxy for the request. Defaults to False.
+        existing_kit_id (int, optional): ID of existing kit to update. Defaults to None.
 
     Returns:
         Optional[Kit]: The created/updated Kit object, or None if scraping failed
@@ -436,7 +437,7 @@ def scrape_kit(slug: str, kit_id: str | None = None, use_proxy: bool = False) ->
                 raise
 
             # Use service layer to process kit data
-            kit = ScrapingService.process_kit_data(data, slug, kit_id, use_proxy)
+            kit = ScrapingService.process_kit_data(data, slug, kit_id, use_proxy, existing_kit_id)
             return kit
 
         except requests.exceptions.RequestException as e:
@@ -448,6 +449,8 @@ def scrape_kit(slug: str, kit_id: str | None = None, use_proxy: bool = False) ->
             logger.warning(f"Retrying in 2 seconds... (attempt {retry_count + 1}/{max_retries})")
             time.sleep(2)
 
+        except KitNotFoundError:
+            raise
         except Exception as e:
             logger.error(f"Unexpected error scraping {slug}: {str(e)}")
             return None

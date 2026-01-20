@@ -85,6 +85,39 @@
 					"response": []
 				},
 				{
+					"name": "Get Club Kits",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-API-Key",
+								"value": "{{api_key}}",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/clubs/1/kits?page=1&page_size=20",
+							"host": ["{{base_url}}"],
+							"path": ["api", "clubs", "1", "kits"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number (default: 1)"
+								},
+								{
+									"key": "page_size",
+									"value": "20",
+									"description": "Items per page (default: 20, max: 100)"
+								}
+							]
+						},
+						"description": "Retrieve all kits for a specific club using the nested /clubs/{club_id}/kits endpoint."
+					},
+					"response": []
+				},
+				{
 					"name": "Get Random Clubs",
 					"request": {
 						"method": "GET",
@@ -123,7 +156,7 @@
 			"name": "Kits",
 			"item": [
 				{
-					"name": "Get Club Kits by Season",
+					"name": "List Kits (filtered)",
 					"request": {
 						"method": "GET",
 						"header": [
@@ -135,23 +168,75 @@
 							}
 						],
 						"url": {
-							"raw": "{{base_url}}/api/kits?club=1&season=1",
+							"raw": "{{base_url}}/api/kits?club=1&season=1&country=ES&primary_color=Blue&secondary_color=White&secondary_color=Gold&design=Stripes&year=2024&page=1&page_size=20",
 							"host": ["{{base_url}}"],
 							"path": ["api", "kits"],
 							"query": [
 								{
 									"key": "club",
 									"value": "1",
-									"description": "Club ID"
+									"description": "Filter by club ID"
 								},
 								{
 									"key": "season",
 									"value": "1",
-									"description": "Season ID"
+									"description": "Filter by season ID"
+								},
+								{
+									"key": "country",
+									"value": "ES",
+									"description": "Filter by club country (ISO 2-letter code, e.g. ES, GB, BR)"
+								},
+								{
+									"key": "primary_color",
+									"value": "Blue",
+									"description": "Filter by primary color (must be one of the documented color options)"
+								},
+								{
+									"key": "secondary_color",
+									"value": "White",
+									"description": "Filter by secondary color (can be repeated to require multiple colors)"
+								},
+								{
+									"key": "secondary_color",
+									"value": "Gold",
+									"description": "Additional secondary color filter"
+								},
+								{
+									"key": "design",
+									"value": "Stripes",
+									"description": "Filter by design pattern (must be one of the documented design options)"
+								},
+								{
+									"key": "year",
+									"value": "2024",
+									"description": "Filter by season year (matches either first_year or second_year)"
+								},
+								{
+									"key": "first_year",
+									"value": "",
+									"description": "Filter by exact first_year (optional, can be combined with second_year)",
+									"disabled": true
+								},
+								{
+									"key": "second_year",
+									"value": "",
+									"description": "Filter by exact second_year (optional, usually used with first_year)",
+									"disabled": true
+								},
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number (default: 1)"
+								},
+								{
+									"key": "page_size",
+									"value": "20",
+									"description": "Items per page (default: 20, max: 100)"
 								}
 							]
 						},
-						"description": "Retrieve all kits for a specific club in a specific season."
+						"description": "List kits with advanced filtering by club, season, country, colors, design, and year, with pagination support."
 					},
 					"response": []
 				},
@@ -168,11 +253,11 @@
 							}
 						],
 						"url": {
-							"raw": "{{base_url}}/api/kit-json/1",
+							"raw": "{{base_url}}/api/kits/1",
 							"host": ["{{base_url}}"],
-							"path": ["api", "kit-json", "1"]
+							"path": ["api", "kits", "1"]
 						},
-						"description": "Retrieve comprehensive information about a specific kit."
+						"description": "Retrieve comprehensive information about a specific kit using the RESTful /kits/{id} endpoint."
 					},
 					"response": []
 				},

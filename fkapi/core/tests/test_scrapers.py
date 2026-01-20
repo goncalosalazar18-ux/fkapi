@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 from django.db import transaction
 from django.test import TestCase
 
+from core.exceptions import KitNotFoundError
 from core.models import Brand, Club, Color, Competition, Kit, Season, Type_K
 from core.scrapers import (
     _get_or_create_brand,
@@ -249,12 +250,17 @@ class ScraperTests(TestCase):
                     defaults={'name': "FC Copenhagen"}
                 )
 
-                kit = scrape_kit("test-kit")
-                if case["expected"] is None:
-                    self.assertIsNone(kit)
+                if case["name"] == "404 error":
+                    # For 404 errors, KitNotFoundError should be raised
+                    with self.assertRaises(KitNotFoundError):
+                        scrape_kit("test-kit")
                 else:
-                    self.assertIsNotNone(kit)
-                    self.assertEqual(kit.rating, case["expected"])
+                    kit = scrape_kit("test-kit")
+                    if case["expected"] is None:
+                        self.assertIsNone(kit)
+                    else:
+                        self.assertIsNotNone(kit)
+                        self.assertEqual(kit.rating, case["expected"])
 
     @patch('core.scrapers.http_get')
     def test_scrape_kit_season_formats(self, mock_http_get):

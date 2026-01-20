@@ -83,3 +83,18 @@ class RateLimitExceededError(ScrapingError):
         if message is None:
             message = "Rate limit exceeded. Please try again later."
         super().__init__(message, None)
+
+
+class ValidationError(ScrapingError):
+    """Raised when API request validation fails."""
+
+    def __init__(self, message: str | None = None):
+        """
+        Initialize a ValidationError.
+
+        Args:
+            message: Error message describing the validation failure
+        """
+        if message is None:
+            message = "Invalid request parameters"
+        super().__init__(message, None)
