@@ -3,12 +3,7 @@ from unittest.mock import MagicMock, patch
 from django.test import TestCase
 
 from core.cache_utils import (
-    CACHE_PREFIX_BRAND,
-    CACHE_PREFIX_CLUB,
-    CACHE_PREFIX_COMPETITION,
-    CACHE_PREFIX_KIT,
     CACHE_PREFIX_SEARCH,
-    CACHE_PREFIX_SEASON,
     generate_cache_key,
     invalidate_brand_cache,
     invalidate_club_cache,
@@ -18,7 +13,6 @@ from core.cache_utils import (
     invalidate_season_cache,
     setup_cache_invalidation,
 )
-from core.models import Brand, Club, Competition, Kit, Season
 
 
 class GenerateCacheKeyTests(TestCase):

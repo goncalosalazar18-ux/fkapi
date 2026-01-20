@@ -2,8 +2,8 @@ from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
 
-from core.models import Club
 from core import tasks
+from core.models import Club
 
 
 class TasksTests(TestCase):

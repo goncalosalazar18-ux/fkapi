@@ -1,7 +1,7 @@
 from django.test import TestCase
 
 from core.models import Season
-from core.services.seasons_service import MIN_YEAR, MAX_YEAR, SeasonsService, get_max_season_span
+from core.services.seasons_service import MAX_YEAR, MIN_YEAR, SeasonsService, get_max_season_span
 
 
 class SeasonsServiceTests(TestCase):
