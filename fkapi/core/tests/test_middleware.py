@@ -232,7 +232,6 @@ class MiddlewareTests(TestCase):
 
     def test_performance_middleware_handles_response_with_setitem(self):
         """Test that performance middleware handles responses with __setitem__."""
-        from django.http import HttpResponse
 
         class DictLikeResponse:
             def __init__(self):
@@ -255,8 +254,6 @@ class MiddlewareTests(TestCase):
 
     def test_performance_middleware_handles_track_api_usage_exception(self):
         """Test that _track_api_usage handles exceptions gracefully."""
-        from django.core.cache import cache as django_cache
-        from django.http import HttpResponse
 
         with patch('core.middleware.cache.set', side_effect=Exception("Cache error")):
             with patch('core.middleware.logger') as mock_logger:
@@ -270,7 +267,6 @@ class MiddlewareTests(TestCase):
     def test_performance_middleware_tracks_api_usage_with_existing_stats(self):
         """Test that _track_api_usage handles existing cached stats."""
         from django.core.cache import cache as django_cache
-        from django.http import HttpResponse
 
         django_cache.clear()
         existing_stats = {
