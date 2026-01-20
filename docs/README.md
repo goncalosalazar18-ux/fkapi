@@ -1,5 +1,7 @@
 # Documentation Index
 
+[![codecov](https://codecov.io/gh/sunr4y/fkapi/branch/develop/graph/badge.svg)](https://codecov.io/gh/sunr4y/fkapi)
+
 Welcome to the Football Kit Archive API documentation. This index will help you find the information you need.
 
 ## About This Project

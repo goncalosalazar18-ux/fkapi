@@ -1,0 +1,21 @@
+[run]
+source = fkapi/core
+omit =
+    */migrations/*
+    core/tests/*
+    core/views.py
+    core/views_docs.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    @abstractmethod
+show_missing = True
+skip_covered = False
+precision = 2
+
