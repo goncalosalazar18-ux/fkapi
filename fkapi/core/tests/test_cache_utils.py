@@ -68,3 +68,44 @@ class SetupCacheInvalidationTests(TestCase):
         self.assertGreaterEqual(mock_post_save_connect.call_count, 1)
         self.assertGreaterEqual(mock_post_delete_connect.call_count, 1)
 
+
+    @patch("core.cache_utils.logger")
+    @patch("django_redis.get_redis_connection")
+    def test_invalidate_patterns_handles_exceptions(
+        self,
+        mock_conn: MagicMock,
+        mock_logger: MagicMock,
+    ) -> None:
+        from core.cache_utils import _invalidate_patterns
+
+        # Test exception during pattern processing
+        client = MagicMock()
+        client.keys.side_effect = Exception("Redis error")
+        mock_conn.return_value = client
+
+        _invalidate_patterns(["test_pattern"])
+        mock_logger.debug.assert_called()
+
+    @patch("core.cache_utils.logger")
+    def test_invalidate_patterns_handles_import_error(
+        self,
+        mock_logger: MagicMock,
+    ) -> None:
+        from core.cache_utils import _invalidate_patterns
+
+        with patch("django_redis.get_redis_connection", side_effect=ImportError):
+            _invalidate_patterns(["test_pattern"])
+            mock_logger.debug.assert_called()
+
+    @patch("core.cache_utils.logger")
+    @patch("django_redis.get_redis_connection", side_effect=Exception("General error"))
+    def test_invalidate_patterns_handles_general_exception(
+        self,
+        mock_conn: MagicMock,
+        mock_logger: MagicMock,
+    ) -> None:
+        from core.cache_utils import _invalidate_patterns
+
+        _invalidate_patterns(["test_pattern"])
+        mock_logger.debug.assert_called()
+
