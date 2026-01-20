@@ -1,10 +1,12 @@
 # Standard library imports
+import logging
 import os
 import re
 from contextlib import contextmanager
 from typing import Any
 
 # Third-party imports
+from django.conf import settings
 from django.core.cache import cache
 from django.db import connection, transaction
 from django.db.models import Q
@@ -191,7 +193,15 @@ def scraping_error_handler(request: HttpRequest, exc: ScrapingError) -> Any:
 @api.exception_handler(Exception)
 def custom_exception_handler(request: HttpRequest, exc: Exception) -> Any:
     """Handle all other exceptions."""
-    return api.create_response(request, {"detail": str(exc)}, status=500)
+    logger = logging.getLogger(__name__)
+    logger.error(f"Unhandled exception: {type(exc).__name__}", exc_info=True)
+
+    if settings.DEBUG:
+        detail = str(exc)
+    else:
+        detail = "An internal server error occurred. Please try again later."
+
+    return api.create_response(request, {"detail": detail}, status=500)
 
 
 @api.get("/health", summary="Health Check", tags=["System"], description="""
