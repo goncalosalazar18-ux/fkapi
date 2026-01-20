@@ -1,11 +1,12 @@
-from core.models import Brand
-from core.scrapers import scrape_brand
-from django.core.management.base import BaseCommand
-import time
-from django.utils.text import slugify
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from django.core.management.base import BaseCommand
+from django.utils.text import slugify
+
+from core.constants import BRAND_SLUG_SUFFIX
+from core.models import Brand
+from core.scrapers import scrape_brand
+
 
 class Command(BaseCommand):
     help = 'Scrapes brand data from the web'
@@ -24,10 +25,10 @@ class Command(BaseCommand):
             futures = []
             for brand in brands:
                 print(brand)
-                brand_slugged = slugify(brand.name.replace(".", "").strip()+'-kits')
+                brand_slugged = slugify(brand.name.replace(".", "").strip() + BRAND_SLUG_SUFFIX)
                 print(f'Scraping {brand.slug}')
                 futures.append(executor.submit(scrape_brand_wrapper, brand_slugged))
-            
+
             for future in as_completed(futures):
                 result = future.result()
                 if result is None:

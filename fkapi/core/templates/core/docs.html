@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - FKApi Docs</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #f6f8fa;
+            --bg-secondary: #ffffff;
+            --bg-sidebar: #ffffff;
+            --text-primary: #24292e;
+            --text-secondary: #586069;
+            --border: #e1e4e8;
+            --link: #0366d6;
+            --link-hover: #f1f3f5;
+            --code-bg: #f6f8fa;
+            --table-border: #dfe2e5;
+            --table-header: #f6f8fa;
+        }
+        
+        [data-theme="dark"] {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-sidebar: #161b22;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --border: #30363d;
+            --link: #58a6ff;
+            --link-hover: #21262d;
+            --code-bg: #21262d;
+            --table-border: #30363d;
+            --table-header: #161b22;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            display: flex;
+            transition: background 0.3s, color 0.3s;
+        }
+        
+        .sidebar {
+            width: 280px;
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border);
+            padding: 1.5rem;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+            transition: background 0.3s, border-color 0.3s;
+        }
+        
+        .sidebar h2 {
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+            font-size: 1.2rem;
+        }
+        
+        .sidebar h3 {
+            color: var(--text-secondary);
+        }
+        
+        .sidebar ul {
+            list-style: none;
+        }
+        
+        .sidebar a {
+            display: block;
+            padding: 0.5rem;
+            color: var(--text-secondary);
+            text-decoration: none;
+            border-radius: 3px;
+            transition: all 0.2s;
+        }
+        
+        .sidebar a:hover {
+            background: var(--link-hover);
+            color: var(--link);
+        }
+        
+        .sidebar a.active {
+            background: var(--link);
+            color: white;
+        }
+        
+        .theme-toggle {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            color: var(--text-primary);
+            z-index: 1000;
+            transition: all 0.3s;
+        }
+        
+        .theme-toggle:hover {
+            background: var(--link-hover);
+        }
+        
+        .content {
+            margin-left: 280px;
+            flex: 1;
+            padding: 2rem;
+        }
+        
+        .markdown-body {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 2rem;
+            background: var(--bg-secondary);
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            transition: background 0.3s;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem 2rem;
+            margin: -2rem -2rem 2rem -2rem;
+            border-radius: 6px 6px 0 0;
+        }
+        
+        .header h1 {
+            font-size: 2rem;
+            margin: 0;
+        }
+        
+        code { 
+            background: var(--code-bg); 
+            padding: 0.2em 0.4em; 
+            border-radius: 3px; 
+            font-size: 85%; 
+            color: var(--text-primary);
+        }
+        
+        pre { 
+            background: var(--code-bg); 
+            padding: 1rem; 
+            border-radius: 6px; 
+            overflow-x: auto; 
+            border: 1px solid var(--border);
+        }
+        
+        pre code { 
+            background: none; 
+            padding: 0; 
+            color: var(--text-primary);
+        }
+        
+        table { 
+            border-collapse: collapse; 
+            width: 100%; 
+            margin: 1rem 0; 
+        }
+        
+        th, td { 
+            border: 1px solid var(--table-border); 
+            padding: 0.5rem; 
+        }
+        
+        th { 
+            background: var(--table-header); 
+            font-weight: 600; 
+        }
+        
+        .markdown-body h1,
+        .markdown-body h2,
+        .markdown-body h3,
+        .markdown-body h4,
+        .markdown-body h5,
+        .markdown-body h6 {
+            color: var(--text-primary);
+        }
+        
+        .markdown-body a {
+            color: var(--link);
+        }
+        
+        .markdown-body blockquote {
+            border-left: 4px solid var(--border);
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <button class="theme-toggle" onclick="toggleTheme()">🌙 Dark</button>
+    <div class="sidebar">
+        <h2>📚 Documentation</h2>
+        <ul>
+            <li><a href="{% url 'docs_view' 'README' %}" {% if current_path == 'README' %}class="active"{% endif %}>Index</a></li>
+            {% for doc in doc_files %}
+            <li><a href="{% url 'docs_view' doc.path %}" {% if current_path == doc.path %}class="active"{% endif %}>{{ doc.name }}</a></li>
+            {% endfor %}
+        </ul>
+        {% for subdir_name, subdir_docs in subdirs.items %}
+        <div style="margin-top: 1.5rem;">
+            <h3 style="font-size: 0.9rem; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 0.5rem;">{{ subdir_name }}</h3>
+            <ul>
+                {% for doc in subdir_docs %}
+                <li><a href="{% url 'docs_view' doc.path %}" {% if current_path == doc.path %}class="active"{% endif %}>{{ doc.name }}</a></li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endfor %}
+        <div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid var(--border);">
+            <a href="/api/docs" target="_blank" style="color: var(--link);">API Docs ↗</a>
+        </div>
+    </div>
+    <div class="content">
+        <div class="markdown-body">
+            <div class="header">
+                <h1>{{ title }}</h1>
+            </div>
+            {% if toc %}
+            <div style="background: var(--code-bg); padding: 1rem; border-radius: 6px; margin-bottom: 2rem; border: 1px solid var(--border);">
+                <strong style="color: var(--text-primary);">Table of Contents</strong>
+                {{ toc|safe }}
+            </div>
+            {% endif %}
+            {{ content|safe }}
+        </div>
+    </div>
+    <script>
+        // Load saved theme
+        const savedTheme = localStorage.getItem('docs-theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        updateThemeButton(savedTheme);
+        
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme');
+            const newTheme = current === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('docs-theme', newTheme);
+            updateThemeButton(newTheme);
+        }
+        
+        function updateThemeButton(theme) {
+            const btn = document.querySelector('.theme-toggle');
+            btn.textContent = theme === 'dark' ? '☀️ Light' : '🌙 Dark';
+        }
+    </script>
+</body>
+</html>

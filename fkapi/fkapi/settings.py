@@ -10,10 +10,17 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 
-from pathlib import Path
-from dotenv import load_dotenv
 import os
-from celery.schedules import crontab
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+try:
+    from celery.schedules import crontab
+    CELERY_AVAILABLE = True
+except ImportError:
+    CELERY_AVAILABLE = False
+    crontab = None
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -22,22 +29,61 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-(zoq@ffsbz8dd9v-6vxgz-hm3%d9bmavt72x!cje751_edmf-+'
-
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() in ('1', 'true', 'yes')
 
-ALLOWED_HOSTS = []
+# SECURITY WARNING: keep the secret key used in production secret!
+# Read from environment with validation
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = 'insecure-dev-key-only-for-development'
+    else:
+        from django.core.exceptions import ImproperlyConfigured
+        raise ImproperlyConfigured("DJANGO_SECRET_KEY must be set in production")
 
-CELERY_BROKER_URL = 'redis://localhost:6379'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379'
-CELERY_BEAT_SCHEDULE = {
-    'scrape_daily': {
-        'task': 'core.tasks.scrape_daily',
-        'schedule': crontab(hour=0, minute=0),
-    },
+# Load allowed hosts from env (comma-separated). Fall back to localhost and optional PROJECT_IP.
+_allowed_hosts_env = os.getenv('DJANGO_ALLOWED_HOSTS')
+if _allowed_hosts_env:
+    ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts_env.split(',') if h.strip()]
+else:
+    default_ip = os.environ.get('PROJECT_IP')
+    ALLOWED_HOSTS = ['127.0.0.1', 'localhost'] + ([default_ip] if default_ip else [])
+
+ENABLE_CELERY = os.getenv('ENABLE_CELERY', 'True' if CELERY_AVAILABLE else 'False').lower() in ('1', 'true', 'yes')
+
+if ENABLE_CELERY and CELERY_AVAILABLE:
+    CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379')
+    CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379')
+    CELERY_BEAT_SCHEDULE = {
+        'scrape_daily': {
+            'task': 'core.tasks.scrape_daily',
+            'schedule': crontab(hour=0, minute=0),
+        },
+    }
+else:
+    CELERY_BROKER_URL = None
+    CELERY_RESULT_BACKEND = None
+    CELERY_BEAT_SCHEDULE = {}
+
+# Cache configuration
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': os.getenv('REDIS_URL', 'redis://localhost:6379/1'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        },
+        'KEY_PREFIX': 'fkapi',
+        'TIMEOUT': 3600,
+    }
 }
+
+# Cache settings
+CACHE_TIMEOUT_SHORT = 300  # 5 minutes
+CACHE_TIMEOUT_MEDIUM = 1800  # 30 minutes
+CACHE_TIMEOUT_LONG = 3600  # 1 hour
+CACHE_TIMEOUT_VERY_LONG = 86400  # 24 hours
 
 # Application definition
 
@@ -52,11 +98,14 @@ INSTALLED_APPS = [
     'django.contrib.postgres',
     #'django.contrib.sites',
     'ninja',
+    'ninja_apikey',
     'core',
     'colorfield',
-    'celery',
-    'django_celery_beat',
+    'django_countries',
 ]
+
+if ENABLE_CELERY and CELERY_AVAILABLE:
+    INSTALLED_APPS += ['celery', 'django_celery_beat']
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -66,6 +115,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'core.middleware.rate_limit_middleware',
+    'core.middleware.performance_monitoring_middleware',
 ]
 
 ROOT_URLCONF = 'fkapi.urls'
@@ -89,27 +140,15 @@ TEMPLATES = [
 WSGI_APPLICATION = 'fkapi.wsgi.application'
 
 
-# Database
-# https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
-#     }
-# }
 
 
 
 load_dotenv()
 
-import logging
 
-logger = logging.getLogger(__name__)
-logger.info("Host: %s", os.getenv('POSTGRES_HOST'))
-logger.info("DB: %s", os.getenv('POSTGRES_DB'))
-logger.info("User: %s", os.getenv('POSTGRES_USER'))
-logger.info("Password: %s", os.getenv('POSTGRES_PASSWORD'))
+
+
 
 
 DATABASES = {
@@ -119,7 +158,7 @@ DATABASES = {
         'USER': os.getenv('POSTGRES_USER'),
         'PASSWORD': os.getenv('POSTGRES_PASSWORD'),
         'HOST': os.getenv('POSTGRES_HOST'),
-        'PORT': 5433,
+        'PORT': os.getenv('POSTGRES_PORT') or '5432',
         'CONN_MAX_AGE': 60,
         'OPTIONS': {
             'keepalives': 1,
@@ -171,3 +210,81 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Performance Monitoring Settings
+SLOW_QUERY_THRESHOLD = float(os.getenv('SLOW_QUERY_THRESHOLD', '0.5'))
+SLOW_RESPONSE_THRESHOLD = float(os.getenv('SLOW_RESPONSE_THRESHOLD', '1.0'))
+LOG_DB_QUERIES = os.getenv('LOG_DB_QUERIES', 'False').lower() in ('1', 'true', 'yes')
+
+# Logging Configuration
+LOGS_DIR = BASE_DIR / 'logs'
+LOGS_DIR.mkdir(exist_ok=True)
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+        'file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': LOGS_DIR / 'performance.log',
+            'maxBytes': 10 * 1024 * 1024,  # 10MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'performance': {
+            'handlers': ['console', 'file'] if not DEBUG else ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.db.backends': {
+            'handlers': ['console'] if LOG_DB_QUERIES else [],
+            'level': 'INFO' if LOG_DB_QUERIES else 'WARNING',
+            'propagate': False,
+        },
+    },
+}
+
+# Security settings for production
+if not DEBUG:
+    SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'True').lower() in ('1', 'true', 'yes')
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', '31536000'))  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    X_FRAME_OPTIONS = 'DENY'
+else:
+    # Development settings
+    SECURE_SSL_REDIRECT = False
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
+    X_FRAME_OPTIONS = 'SAMEORIGIN'
+
+# Django Debug Toolbar (only in development)
+if DEBUG:
+    try:
+        import debug_toolbar  # noqa: F401, PLC0415
+        INSTALLED_APPS += ['debug_toolbar']
+        MIDDLEWARE.insert(0, 'debug_toolbar.middleware.DebugToolbarMiddleware')
+        INTERNAL_IPS = ['127.0.0.1', 'localhost']
+    except ImportError:
+        pass
+
