@@ -64,9 +64,13 @@ def _get_season_priority(season: Season, keyword: str) -> int:
     3. Ends with keyword (e.g., "2025" matches "2024-25" via second_year)
     4. Contains keyword (e.g., "2025" matches "2025-27" via first_year or second_year)
 
+    For 2-digit years (e.g., "97"), interprets as full year (e.g., "1997"):
+    - Priority 2: first_year ends with "97" (e.g., "1997")
+    - Priority 3: second_year ends with "97" (e.g., "1996-97")
+
     Args:
         season: The Season object
-        keyword: The search keyword (e.g., "2025")
+        keyword: The search keyword (e.g., "2025" or "97")
 
     Returns:
         Priority value (lower = higher priority)
@@ -77,6 +81,14 @@ def _get_season_priority(season: Season, keyword: str) -> int:
         return 2  # Starts with keyword (first_year matches)
     if season.second_year and season.second_year == keyword:
         return 3  # Ends with keyword (second_year matches)
+
+    # Handle 2-digit years (e.g., "97" should match "1997")
+    if keyword.isdigit() and len(keyword) == 2:
+        if season.first_year and season.first_year.endswith(keyword):
+            return 2  # first_year ends with keyword (e.g., "1997" for "97")
+        if season.second_year and season.second_year.endswith(keyword):
+            return 3  # second_year ends with keyword (e.g., "1997" for "97")
+
     if keyword in season.first_year or (season.second_year and keyword in season.second_year):
         return 4  # Contains keyword in first_year or second_year
     return 5  # Fallback (shouldn't happen if query is correct)
@@ -1072,6 +1084,17 @@ def search_seasons(
                 Q(year__exact=str(year_int))  # Exact match (single year format)
                 | Q(first_year=str(year_int))  # Starts with keyword (e.g., "2025-26")
                 | Q(second_year=str(year_int))  # Ends with keyword (e.g., "2024-25")
+                | Q(first_year__icontains=keyword)  # Contains in first_year
+                | Q(second_year__icontains=keyword)  # Contains in second_year
+            )
+        elif len(keyword) == 2:
+            # For 2-digit years (e.g., "97"), interpret as full year (e.g., "1997")
+            # Search for years ending with the 2 digits
+            year_query = (
+                Q(year__exact=keyword)  # Exact match (e.g., "97")
+                | Q(first_year__endswith=keyword)  # first_year ends with keyword (e.g., "1997")
+                | Q(second_year__endswith=keyword)  # second_year ends with keyword (e.g., "1997")
+                | Q(year__icontains=keyword)  # Contains in year field
                 | Q(first_year__icontains=keyword)  # Contains in first_year
                 | Q(second_year__icontains=keyword)  # Contains in second_year
             )
