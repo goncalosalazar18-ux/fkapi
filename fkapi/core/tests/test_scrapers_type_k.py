@@ -17,21 +17,22 @@ class ScrapersTypeKTests(TestCase):
         self.club = Club.objects.create(slug="test-club", name="Test Club")
         self.brand = Brand.objects.create(slug="test-brand", name="Test Brand")
 
-    @patch('core.scrapers.scrape_kit_lite')
+    @patch("core.scrapers.scrape_kit_lite")
     def test_new_type_k_auto_categorized_in_process_kit(self, mock_scrape_kit):
         """Test that new Type_K is automatically categorized in _process_kit."""
         mock_scrape_kit.return_value = Mock()
 
         # Create mock BeautifulSoup element
         from bs4 import BeautifulSoup
-        html = '''
+
+        html = """
         <div>
             <a href="/test-kit-slug/123/"></a>
             <div class="kit-season">2024-25 Training Home</div>
         </div>
-        '''
-        soup = BeautifulSoup(html, 'html.parser')
-        kit_element = soup.find('div')
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        kit_element = soup.find("div")
 
         # Process kit
         _process_kit(kit_element, self.club, self.season, self.brand)
@@ -43,30 +44,27 @@ class ScrapersTypeKTests(TestCase):
         self.assertFalse(type_k.is_goalkeeper)
         self.assertEqual(type_k.order_priority, 1)
 
-    @patch('core.scrapers.scrape_kit_lite')
+    @patch("core.scrapers.scrape_kit_lite")
     def test_existing_type_k_not_recategorized_in_process_kit(self, mock_scrape_kit):
         """Test that existing Type_K is not recategorized in _process_kit."""
         mock_scrape_kit.return_value = Mock()
 
         # Create existing Type_K with custom category
         existing_type = Type_K.objects.create(
-            name="Custom Type",
-            category="match",
-            category_order=1,
-            order_priority=999,
-            is_goalkeeper=False
+            name="Custom Type", category="match", category_order=1, order_priority=999, is_goalkeeper=False
         )
 
         # Create mock BeautifulSoup element
         from bs4 import BeautifulSoup
-        html = '''
+
+        html = """
         <div>
             <a href="/test-kit-slug/123/"></a>
             <div class="kit-season">2024-25 Custom Type</div>
         </div>
-        '''
-        soup = BeautifulSoup(html, 'html.parser')
-        kit_element = soup.find('div')
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        kit_element = soup.find("div")
 
         # Process kit
         _process_kit(kit_element, self.club, self.season, self.brand)

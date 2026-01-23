@@ -347,9 +347,9 @@ def review_country_assignments(request: HttpRequest) -> HttpResponse:
                     if f"{country_name}" in countries_assigned:
                         # Actualizar el contador si ya existe
                         idx = countries_assigned.index(f"{country_name}")
-                        countries_assigned[
-                            idx
-                        ] = f"{country_name} ({exact_matches.count()} exactos, {partial_matches.count()} parciales)"
+                        countries_assigned[idx] = (
+                            f"{country_name} ({exact_matches.count()} exactos, {partial_matches.count()} parciales)"
+                        )
                     else:
                         countries_assigned.append(f"{country_name} ({partial_matches.count()} parciales)")
 

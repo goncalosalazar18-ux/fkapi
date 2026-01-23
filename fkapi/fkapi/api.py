@@ -423,6 +423,55 @@ def _unaccent_filter(field: str, value: str) -> Q:
         return Q(**{f"{field}__icontains": value})
 
 
+def _is_secondary_team(club_name: str) -> bool:
+    """
+    Check if a club name indicates it's a secondary team (B, C, youth, women's, etc.).
+
+    Returns True if the club name contains indicators of secondary teams that should
+    appear lower in search results.
+
+    Patterns detected:
+    - Roman numerals: II, III (for B and C teams)
+    - Letters B and C as standalone words
+    - Jong (as standalone word)
+    - Youth
+    - U17-U23 (all youth categories)
+    - Women's team indicators: Ladies, Women, Femenino, Féminas, Féminine, Lads
+    """
+    if not club_name:
+        return False
+
+    normalized = club_name.upper()
+
+    # Roman numerals for B and C teams (II, III)
+    if re.search(r"\bII\b", normalized) or re.search(r"\bIII\b", normalized):
+        return True
+
+    # B and C as standalone words (word boundaries)
+    if re.search(r"\bB\b", normalized) or re.search(r"\bC\b", normalized):
+        return True
+
+    # Jong as standalone word (careful not to match in middle of words)
+    if re.search(r"\bJONG\b", normalized):
+        return True
+
+    # Youth
+    if "YOUTH" in normalized:
+        return True
+
+    # U17-U23 (all youth categories)
+    if re.search(r"\bU(1[7-9]|2[0-3])\b", normalized):
+        return True
+
+    # Women's team indicators (case-insensitive)
+    women_indicators = ["LADIES", "WOMEN", "FEMENINO", "FÉMINAS", "FÉMININE", "LADS", "FRAUEN"]
+    for indicator in women_indicators:
+        if indicator in normalized:
+            return True
+
+    return False
+
+
 @api.get(
     "/clubs/{club_id}/kits",
     response=list[KitSerializer],
@@ -1110,7 +1159,7 @@ def search_kits(
 
     # Order by Type_K category and priority for proper sorting
     # Order: 1. Match kits (non-GK first, then GK), 2. Pre-match, 3. Pre-season, 4. Training, 5. Travel, 6. Jackets
-    kits = kits.select_related("type").order_by(
+    kits = kits.select_related("type", "team").order_by(
         "type__category_order",  # Category order (1=match, 2=prematch, etc.)
         "type__is_goalkeeper",  # Non-GK first (False < True)
         "type__order_priority",  # Priority within category (Home=1, Away=2, etc.)
@@ -1118,8 +1167,23 @@ def search_kits(
         "-id",  # Most recent first as final tiebreaker
     )
 
-    # Get top 10 results and convert to list to avoid lazy evaluation issues
-    kits_list = list(kits[:10])
+    # Get more results than needed to allow for reordering
+    kits_list = list(kits[:20])
+
+    # Separate primary teams from secondary teams (B, C, youth, women's, etc.)
+    primary_teams = []
+    secondary_teams = []
+
+    for kit in kits_list:
+        if _is_secondary_team(kit.team.name):
+            secondary_teams.append(kit)
+        else:
+            primary_teams.append(kit)
+
+    # Combine: primary teams first, then secondary teams
+    # Take top 10 from the combined list
+    sorted_kits = primary_teams + secondary_teams
+    kits_list = sorted_kits[:10]
 
     # Format results
     results = []

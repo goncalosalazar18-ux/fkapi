@@ -1,4 +1,5 @@
 """Pytest configuration for Django tests."""
+
 import os
 import sys
 
