@@ -2,6 +2,7 @@
 Simple views to serve markdown documentation.
 Minimal implementation - just reads .md files and renders them.
 """
+
 from pathlib import Path
 
 import markdown

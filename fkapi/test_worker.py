@@ -1,6 +1,7 @@
 """
 Test script to verify Celery worker can start
 """
+
 import os
 import subprocess
 import sys

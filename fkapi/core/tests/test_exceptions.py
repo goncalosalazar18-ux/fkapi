@@ -4,7 +4,6 @@ Unit tests for custom exception classes.
 This module tests the custom exception classes defined in core.exceptions.
 """
 
-
 from core.exceptions import (
     ClubNotFoundError,
     InvalidSeasonError,

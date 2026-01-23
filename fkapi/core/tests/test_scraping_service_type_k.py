@@ -18,10 +18,10 @@ class ScrapingServiceTypeKTests(TestCase):
         self.club = Club.objects.create(slug="test-club", name="Test Club")
         self.brand = Brand.objects.create(slug="test-brand", name="Test Brand")
 
-    @patch('core.services.scraping_service.ClubsService.handle_club_changes')
-    @patch('core.scrapers._get_or_create_brand')
-    @patch('core.scrapers.get_season')
-    @patch('core.services.scraping_service.KitsService.create_or_update_kit')
+    @patch("core.services.scraping_service.ClubsService.handle_club_changes")
+    @patch("core.scrapers._get_or_create_brand")
+    @patch("core.scrapers.get_season")
+    @patch("core.services.scraping_service.KitsService.create_or_update_kit")
     def test_new_type_k_auto_categorized(self, mock_create_kit, mock_get_season, mock_brand, mock_club):
         """Test that new Type_K is automatically categorized when created during scraping."""
         mock_club.return_value = self.club
@@ -54,10 +54,10 @@ class ScrapingServiceTypeKTests(TestCase):
         self.assertFalse(type_k.is_goalkeeper)
         self.assertEqual(type_k.order_priority, 1)  # Home has priority 1
 
-    @patch('core.services.scraping_service.ClubsService.handle_club_changes')
-    @patch('core.scrapers._get_or_create_brand')
-    @patch('core.scrapers.get_season')
-    @patch('core.services.scraping_service.KitsService.create_or_update_kit')
+    @patch("core.services.scraping_service.ClubsService.handle_club_changes")
+    @patch("core.scrapers._get_or_create_brand")
+    @patch("core.scrapers.get_season")
+    @patch("core.services.scraping_service.KitsService.create_or_update_kit")
     def test_existing_type_k_not_recategorized(self, mock_create_kit, mock_get_season, mock_brand, mock_club):
         """Test that existing Type_K is not recategorized."""
         mock_club.return_value = self.club
@@ -67,11 +67,7 @@ class ScrapingServiceTypeKTests(TestCase):
 
         # Create existing Type_K with custom category
         existing_type = Type_K.objects.create(
-            name="Custom Type",
-            category="match",
-            category_order=1,
-            order_priority=999,
-            is_goalkeeper=False
+            name="Custom Type", category="match", category_order=1, order_priority=999, is_goalkeeper=False
         )
 
         # Create KitPageData with existing type name
@@ -98,10 +94,10 @@ class ScrapingServiceTypeKTests(TestCase):
         self.assertEqual(existing_type.category_order, 1)
         self.assertEqual(existing_type.order_priority, 999)
 
-    @patch('core.services.scraping_service.ClubsService.handle_club_changes')
-    @patch('core.scrapers._get_or_create_brand')
-    @patch('core.scrapers.get_season')
-    @patch('core.services.scraping_service.KitsService.create_or_update_kit')
+    @patch("core.services.scraping_service.ClubsService.handle_club_changes")
+    @patch("core.scrapers._get_or_create_brand")
+    @patch("core.scrapers.get_season")
+    @patch("core.services.scraping_service.KitsService.create_or_update_kit")
     def test_gk_type_k_categorized(self, mock_create_kit, mock_get_season, mock_brand, mock_club):
         """Test that GK types are correctly identified and categorized."""
         mock_club.return_value = self.club
