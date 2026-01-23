@@ -7,7 +7,7 @@ from core.scrapers import scrape_club
 
 
 class Command(BaseCommand):
-    help = 'Scrapes club data from the web'
+    help = "Scrapes club data from the web"
 
     def handle(self, *args, **options):
         # Multithreading 15 workers to scrape all clubs

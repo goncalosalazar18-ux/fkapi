@@ -8,8 +8,10 @@ logger = logging.getLogger(__name__)
 
 if is_celery_active():
     from celery import shared_task
+
     task_decorator = shared_task
 else:
+
     def task_decorator(func):
         return func
 
@@ -17,7 +19,7 @@ else:
 @task_decorator
 def scrape_daily():
     """Scrape latest updated kits once a day using django command called scrape_latest"""
-    call_command('scrape_latest')
+    call_command("scrape_latest")
 
 
 @task_decorator
@@ -69,11 +71,10 @@ def scrape_kit_task(slug: str, kit_id: str | None = None, use_proxy: bool = Fals
         result = scrape_kit(slug, kit_id=kit_id, use_proxy=use_proxy)
         if result:
             logger.info(f"Successfully scraped kit: {slug}")
-            return {'success': True, 'kit_id': result.id, 'slug': slug}
+            return {"success": True, "kit_id": result.id, "slug": slug}
         else:
             logger.warning(f"Failed to scrape kit: {slug}")
-            return {'success': False, 'slug': slug}
+            return {"success": False, "slug": slug}
     except Exception as e:
         logger.error(f"Error in scrape_kit_task for slug {slug}: {str(e)}")
-        return {'success': False, 'slug': slug, 'error': str(e)}
-
+        return {"success": False, "slug": slug, "error": str(e)}

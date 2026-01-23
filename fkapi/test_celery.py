@@ -8,7 +8,7 @@ import os
 import django
 import redis
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'fkapi.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fkapi.settings")
 django.setup()
 
 print("=" * 60)
@@ -18,7 +18,7 @@ print("=" * 60)
 # Test Redis connection
 print("\n1. Testing Redis connection...")
 try:
-    r = redis.Redis(host='localhost', port=6379)
+    r = redis.Redis(host="localhost", port=6379)
     r.ping()
     print("   [OK] Redis is running!")
 except Exception as e:
@@ -31,6 +31,7 @@ except Exception as e:
 print("\n2. Testing Celery app...")
 try:
     from fkapi.celery import app
+
     print(f"   [OK] Celery app loaded: {app.main}")
     print(f"   [OK] Broker URL: {app.conf.broker_url}")
     print(f"   [OK] Result Backend: {app.conf.result_backend}")
@@ -41,7 +42,7 @@ except Exception as e:
 # Test task registration
 print("\n3. Testing task registration...")
 try:
-    registered_tasks = [name for name in app.tasks.keys() if not name.startswith('celery.')]
+    registered_tasks = [name for name in app.tasks.keys() if not name.startswith("celery.")]
     print(f"   [OK] Found {len(registered_tasks)} registered tasks:")
     for task in registered_tasks[:5]:  # Show first 5
         print(f"     - {task}")

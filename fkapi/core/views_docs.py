@@ -62,6 +62,7 @@ def docs_view(request: HttpRequest, doc_path: str = "README") -> HttpResponse:
     title = file_path.stem.replace("_", " ").replace("-", " ").title()
     if html_content:
         import re
+
         h1 = re.search(r"<h1[^>]*>(.*?)</h1>", html_content, re.IGNORECASE)
         if h1:
             title = re.sub(r"<[^>]+>", "", h1.group(1)).strip()
@@ -75,28 +76,28 @@ def docs_view(request: HttpRequest, doc_path: str = "README") -> HttpResponse:
         # Top-level files
         for f in sorted(docs_dir.glob("*.md")):
             if f.name != "README.md":
-                doc_files.append({
-                    "name": f.stem.replace("_", " ").replace("-", " ").title(),
-                    "path": f.stem
-                })
+                doc_files.append({"name": f.stem.replace("_", " ").replace("-", " ").title(), "path": f.stem})
 
         # Subdirectories (api/, decisions/, etc.)
         for subdir in sorted(docs_dir.iterdir()):
             if subdir.is_dir() and not subdir.name.startswith(".") and subdir.name not in excluded_dirs:
                 subdir_docs = []
                 for f in sorted(subdir.glob("*.md")):
-                    subdir_docs.append({
-                        "name": f.stem.replace("_", " ").replace("-", " ").title(),
-                        "path": f"{subdir.name}/{f.stem}"
-                    })
+                    subdir_docs.append(
+                        {"name": f.stem.replace("_", " ").replace("-", " ").title(), "path": f"{subdir.name}/{f.stem}"}
+                    )
                 if subdir_docs:
                     subdirs[subdir.name.title()] = subdir_docs
 
-    return render(request, "core/docs.html", {
-        "title": title,
-        "content": html_content,
-        "toc": toc,
-        "doc_files": doc_files,
-        "subdirs": subdirs,
-        "current_path": doc_path
-    })
+    return render(
+        request,
+        "core/docs.html",
+        {
+            "title": title,
+            "content": html_content,
+            "toc": toc,
+            "doc_files": doc_files,
+            "subdirs": subdirs,
+            "current_path": doc_path,
+        },
+    )

@@ -79,6 +79,9 @@ def propagate_countries(request: HttpRequest) -> HttpResponse:
     """
     Vista para propagar países de competiciones a clubes.
     """
+    # Obtener la lista de países
+    country_list = list(countries)
+
     if request.method == "POST":
         # Resolver un conflicto específico
         if "resolve_conflict" in request.POST:
@@ -172,7 +175,7 @@ def propagate_countries(request: HttpRequest) -> HttpResponse:
             updated_count = 0
             resolved_conflicts = request.session.get("resolved_conflicts", {})
 
-            for club_id, countries in club_countries.items():
+            for club_id, country_counts in club_countries.items():
                 # Obtener el club
                 try:
                     club = Club.objects.get(id=club_id)
@@ -186,7 +189,7 @@ def propagate_countries(request: HttpRequest) -> HttpResponse:
                         continue
 
                     # Encontrar el país más frecuente
-                    most_common_country = max(countries.items(), key=lambda x: x[1])[0]
+                    most_common_country = max(country_counts.items(), key=lambda x: x[1])[0]
 
                     # Si el club ya tiene un país asignado y es diferente, registrar conflicto
                     if club.country and club.country.code != most_common_country:
@@ -200,7 +203,7 @@ def propagate_countries(request: HttpRequest) -> HttpResponse:
                                 "existing_country": club.country.code,
                                 "existing_country_name": club.country.name,
                                 "new_country": most_common_country,
-                                "new_country_name": dict(countries)[most_common_country],
+                                "new_country_name": dict(country_counts)[most_common_country],
                                 "competition_id": comp_ref["id"],
                                 "competition_name": comp_ref["name"],
                             }
@@ -226,7 +229,7 @@ def propagate_countries(request: HttpRequest) -> HttpResponse:
                         "conflicts": conflicts,
                         "conflict_count": len(conflicts),
                         "updated_count": updated_count,
-                        "countries": countries,
+                        "countries": country_list,
                     },
                 )
 
@@ -344,9 +347,9 @@ def review_country_assignments(request: HttpRequest) -> HttpResponse:
                     if f"{country_name}" in countries_assigned:
                         # Actualizar el contador si ya existe
                         idx = countries_assigned.index(f"{country_name}")
-                        countries_assigned[idx] = (
-                            f"{country_name} ({exact_matches.count()} exactos, {partial_matches.count()} parciales)"
-                        )
+                        countries_assigned[
+                            idx
+                        ] = f"{country_name} ({exact_matches.count()} exactos, {partial_matches.count()} parciales)"
                     else:
                         countries_assigned.append(f"{country_name} ({partial_matches.count()} parciales)")
 

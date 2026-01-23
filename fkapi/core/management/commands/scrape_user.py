@@ -10,11 +10,11 @@ from core.scrapers import scrape_kit
 
 class Command(BaseCommand):
     def add_arguments(self, parser):
-        parser.add_argument('username', type=str, help='Username to scrape')
+        parser.add_argument("username", type=str, help="Username to scrape")
 
     def handle(self, *args, **options):
         items = []
-        username = options['username']
+        username = options["username"]
         # keep scraping pages until no more pages
         for page in range(1, 100):
             response = http_get(
@@ -22,14 +22,13 @@ class Command(BaseCommand):
             )
             print(f"Scraping page {page}")
             if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'html.parser')
+                soup = BeautifulSoup(response.text, "html.parser")
                 for kit in soup.select("div.kit"):
                     a = kit.find("a")
                     if a:
-                        items.append(a['href'])
+                        items.append(a["href"])
 
-                next_page_link = soup.select_one(
-                    "div.pager a.button[href*='?p=']")
+                next_page_link = soup.select_one("div.pager a.button[href*='?p=']")
                 if not next_page_link:
                     break
 

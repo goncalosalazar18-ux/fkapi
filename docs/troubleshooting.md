@@ -26,7 +26,7 @@ Common issues and solutions for the Football Kit Archive API.
    ```bash
    # On Linux/Mac
    sudo systemctl status postgresql
-   
+
    # On Windows
    # Check Services panel
    ```
@@ -56,7 +56,7 @@ Common issues and solutions for the Football Kit Archive API.
    # On Linux/Mac
    redis-cli ping
    # Should return: PONG
-   
+
    # On Windows
    # Check Services panel or use WSL
    ```
@@ -70,7 +70,7 @@ Common issues and solutions for the Football Kit Archive API.
    ```bash
    # On Linux/Mac
    redis-server
-   
+
    # On Windows (using WSL or Docker)
    docker run -d -p 6379:6379 redis
    ```
@@ -383,5 +383,5 @@ Scraping operation failed. Check:
 
 ---
 
-**Last Updated**: 2026-01-17  
+**Last Updated**: 2026-01-17
 **Maintained by**: sunr4y

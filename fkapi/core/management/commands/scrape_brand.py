@@ -9,16 +9,16 @@ from core.scrapers import scrape_brand
 
 
 class Command(BaseCommand):
-    help = 'Scrapes brand data from the web'
+    help = "Scrapes brand data from the web"
 
     def handle(self, *args, **options):
-        brands = Brand.objects.filter(logo__isnull=True).order_by('-name')
+        brands = Brand.objects.filter(logo__isnull=True).order_by("-name")
 
         def scrape_brand_wrapper(brand_slugged):
             try:
                 return scrape_brand(brand_slugged)
             except Exception as e:
-                print(f'Error scraping {brand_slugged}: {str(e)}')
+                print(f"Error scraping {brand_slugged}: {str(e)}")
                 return None
 
         with ThreadPoolExecutor(max_workers=15) as executor:
@@ -26,7 +26,7 @@ class Command(BaseCommand):
             for brand in brands:
                 print(brand)
                 brand_slugged = slugify(brand.name.replace(".", "").strip() + BRAND_SLUG_SUFFIX)
-                print(f'Scraping {brand.slug}')
+                print(f"Scraping {brand.slug}")
                 futures.append(executor.submit(scrape_brand_wrapper, brand_slugged))
 
             for future in as_completed(futures):

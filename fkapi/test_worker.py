@@ -13,11 +13,22 @@ print("=" * 60)
 try:
     # Try to start worker and capture initial output
     result = subprocess.run(
-        [sys.executable, "-m", "celery", "-A", "fkapi", "worker", "--loglevel=info", "--pool=threads", "--concurrency=1", "--time-limit=1"],
+        [
+            sys.executable,
+            "-m",
+            "celery",
+            "-A",
+            "fkapi",
+            "worker",
+            "--loglevel=info",
+            "--pool=threads",
+            "--concurrency=1",
+            "--time-limit=1",
+        ],
         cwd=os.getcwd(),
         capture_output=True,
         text=True,
-        timeout=10
+        timeout=10,
     )
 
     if "ready" in result.stdout.lower() or "celery@" in result.stdout.lower():
