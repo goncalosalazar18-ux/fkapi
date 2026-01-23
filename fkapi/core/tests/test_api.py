@@ -36,7 +36,7 @@ class APITests(TestCase):
             type=self.type_k,
             brand=self.brand,
             main_img_url="https://example.com/kit.jpg",
-            rating=8.5,
+            rating=4.5,
         )
         self.kit.competition.add(self.competition)
 
@@ -177,3 +177,175 @@ class APITests(TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertIsInstance(data, list)
+
+    def test_get_kits_bulk_success(self):
+        """Test bulk kits endpoint with valid slugs."""
+        # Create additional test kits
+        kit2 = Kit.objects.create(
+            slug="test-kit-2",
+            name="Test Kit 2",
+            team=self.club,
+            season=self.season,
+            type=self.type_k,
+            brand=self.brand,
+            main_img_url="https://example.com/kit2.jpg",
+            rating=4.0,
+        )
+
+        response = self.client.get("/api/kits/bulk", {"slugs": f"{self.kit.slug},{kit2.slug}"})
+        if response.status_code != 200:
+            print(f"Response status: {response.status_code}")
+            print(f"Response content: {response.content}")
+        self.assertEqual(response.status_code, 200, f"Response: {response.content}")
+        data = response.json()
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 2)
+
+        # Verify structure
+        kit_data = data[0]
+        self.assertIn("name", kit_data)
+        self.assertIn("team", kit_data)
+        self.assertIn("season", kit_data)
+        self.assertIn("brand", kit_data)
+        self.assertIn("main_img_url", kit_data)
+
+        # Verify team structure
+        self.assertIn("name", kit_data["team"])
+        self.assertIn("logo", kit_data["team"])
+        self.assertIn("logo_dark", kit_data["team"])
+        self.assertIn("country", kit_data["team"])
+
+        # Verify season structure
+        self.assertIn("year", kit_data["season"])
+
+        # Verify brand structure
+        self.assertIn("name", kit_data["brand"])
+        self.assertIn("logo", kit_data["brand"])
+        self.assertIn("logo_dark", kit_data["brand"])
+
+    def test_get_kits_bulk_minimum_validation(self):
+        """Test bulk kits endpoint rejects less than 2 kits."""
+        response = self.client.get("/api/kits/bulk", {"slugs": self.kit.slug})
+        # Django Ninja may return 400 or 422 for validation errors
+        self.assertIn(response.status_code, [400, 422])
+        data = response.json()
+        self.assertIn("detail", data)
+
+    def test_get_kits_bulk_maximum_validation(self):
+        """Test bulk kits endpoint rejects more than 30 kits."""
+        # Create 31 slugs
+        slugs = ",".join([f"test-kit-{i}" for i in range(31)])
+        response = self.client.get("/api/kits/bulk", {"slugs": slugs})
+        # Django Ninja may return 400 or 422 for validation errors
+        self.assertIn(response.status_code, [400, 422])
+        data = response.json()
+        self.assertIn("detail", data)
+
+    def test_get_kits_bulk_with_urls(self):
+        """Test bulk kits endpoint accepts full URLs."""
+        kit2 = Kit.objects.create(
+            slug="test-kit-2",
+            name="Test Kit 2",
+            team=self.club,
+            season=self.season,
+            type=self.type_k,
+            brand=self.brand,
+            main_img_url="https://example.com/kit2.jpg",
+            rating=4.0,
+        )
+
+        # Test with full URLs
+        url1 = f"https://www.footballkitarchive.com/{self.kit.slug}"
+        url2 = f"https://www.footballkitarchive.com/{kit2.slug}/"
+        response = self.client.get("/api/kits/bulk", {"slugs": f"{url1},{url2}"})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 2)
+
+    def test_get_kits_bulk_mixed_slugs_and_urls(self):
+        """Test bulk kits endpoint accepts mix of slugs and URLs."""
+        kit2 = Kit.objects.create(
+            slug="test-kit-2",
+            name="Test Kit 2",
+            team=self.club,
+            season=self.season,
+            type=self.type_k,
+            brand=self.brand,
+            main_img_url="https://example.com/kit2.jpg",
+            rating=4.0,
+        )
+
+        url1 = f"https://www.footballkitarchive.com/{self.kit.slug}"
+        response = self.client.get("/api/kits/bulk", {"slugs": f"{url1},{kit2.slug}"})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 2)
+
+    def test_get_kits_bulk_preserves_order(self):
+        """Test bulk kits endpoint preserves input order."""
+        kit2 = Kit.objects.create(
+            slug="test-kit-2",
+            name="Test Kit 2",
+            team=self.club,
+            season=self.season,
+            type=self.type_k,
+            brand=self.brand,
+            main_img_url="https://example.com/kit2.jpg",
+            rating=3.5,
+        )
+        kit3 = Kit.objects.create(
+            slug="test-kit-3",
+            name="Test Kit 3",
+            team=self.club,
+            season=self.season,
+            type=self.type_k,
+            brand=self.brand,
+            main_img_url="https://example.com/kit3.jpg",
+            rating=3.5,
+        )
+
+        # Request in specific order
+        slugs = f"{kit3.slug},{self.kit.slug},{kit2.slug}"
+        response = self.client.get("/api/kits/bulk", {"slugs": slugs})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 3)
+
+        # Verify order is preserved
+        self.assertEqual(data[0]["name"], "Test Kit 3")
+        self.assertEqual(data[1]["name"], "Test Kit")
+        self.assertEqual(data[2]["name"], "Test Kit 2")
+
+    def test_get_kits_bulk_handles_missing_kits(self):
+        """Test bulk kits endpoint handles non-existent kits gracefully."""
+        # Include one valid and one invalid slug
+        response = self.client.get("/api/kits/bulk", {"slugs": f"{self.kit.slug},non-existent-kit"})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        # Should return only the valid kit
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["name"], "Test Kit")
+
+    def test_get_kits_bulk_maximum_allowed(self):
+        """Test bulk kits endpoint accepts exactly 30 kits."""
+        # Create additional kits (we already have self.kit)
+        kits = []
+        for i in range(2, 32):  # Create 30 more kits (total 31, but we'll use 30)
+            kit = Kit.objects.create(
+                slug=f"test-kit-{i}",
+                name=f"Test Kit {i}",
+                team=self.club,
+                season=self.season,
+                type=self.type_k,
+                brand=self.brand,
+                main_img_url=f"https://example.com/kit{i}.jpg",
+                rating=3.5,
+            )
+            kits.append(kit)
+
+        # Create slug list with exactly 30 kits (self.kit + 29 from kits)
+        slugs = ",".join([self.kit.slug] + [kit.slug for kit in kits[:29]])
+        response = self.client.get("/api/kits/bulk", {"slugs": slugs})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 30)

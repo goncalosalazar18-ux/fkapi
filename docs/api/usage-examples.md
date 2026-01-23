@@ -78,6 +78,24 @@ response = requests.get(
 )
 seasons = response.json()
 print(seasons)
+
+# Get kits in bulk by slugs
+response = requests.get(
+    f"{BASE_URL}/kits/bulk",
+    params={"slugs": "manchester-united-2024-25-home-kit,liverpool-2024-25-away-kit"},
+    headers=headers
+)
+kits = response.json()
+print(kits)
+
+# Get kits in bulk with mixed slugs and URLs
+response = requests.get(
+    f"{BASE_URL}/kits/bulk",
+    params={"slugs": "https://www.footballkitarchive.com/manchester-united-2024-25-home-kit,liverpool-2024-25-away-kit"},
+    headers=headers
+)
+kits = response.json()
+print(kits)
 ```
 
 ### JavaScript (Fetch API)
@@ -126,10 +144,22 @@ async function getKitDetails(kitId) {
     return kit;
 }
 
+// Get kits in bulk
+async function getKitsBulk(slugs) {
+    const response = await fetch(
+        `${BASE_URL}/kits/bulk?slugs=${encodeURIComponent(slugs)}`,
+        { headers }
+    );
+    const kits = await response.json();
+    console.log(kits);
+    return kits;
+}
+
 // Usage
 searchClubs('manchester');
 getRandomKits(1, 20);
 getKitDetails(1);
+getKitsBulk('manchester-united-2024-25-home-kit,liverpool-2024-25-away-kit');
 ```
 
 ### cURL
@@ -257,6 +287,49 @@ curl -X POST "${BASE_URL}/merge-clubs/" \
     ],
     "main_img_url": "https://www.footballkitarchive.com/..."
 }
+```
+
+### Bulk Kits Response
+
+```json
+[
+    {
+        "name": "Manchester United 2024-25 Home Kit",
+        "team": {
+            "name": "Manchester United",
+            "logo": "https://www.footballkitarchive.com/...",
+            "logo_dark": "https://www.footballkitarchive.com/...",
+            "country": "GB"
+        },
+        "season": {
+            "year": "2024-25"
+        },
+        "brand": {
+            "name": "Adidas",
+            "logo": "https://www.footballkitarchive.com/...",
+            "logo_dark": "https://www.footballkitarchive.com/..."
+        },
+        "main_img_url": "https://www.footballkitarchive.com/..."
+    },
+    {
+        "name": "Liverpool 2024-25 Away Kit",
+        "team": {
+            "name": "Liverpool",
+            "logo": "https://www.footballkitarchive.com/...",
+            "logo_dark": "https://www.footballkitarchive.com/...",
+            "country": "GB"
+        },
+        "season": {
+            "year": "2024-25"
+        },
+        "brand": {
+            "name": "Nike",
+            "logo": "https://www.footballkitarchive.com/...",
+            "logo_dark": "https://www.footballkitarchive.com/..."
+        },
+        "main_img_url": "https://www.footballkitarchive.com/..."
+    }
+]
 ```
 
 ## Error Response Examples

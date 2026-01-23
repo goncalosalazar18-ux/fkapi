@@ -211,6 +211,74 @@ Search for kits using a keyword and optionally a year.
 GET /api/kits/search?keyword=Málaga 2003
 ```
 
+### Get Kits in Bulk
+
+**GET** `/api/kits/bulk`
+
+Retrieve multiple kits by their slugs or URLs in a single request. This endpoint is optimized for bulk operations and returns a reduced response format with only essential fields.
+
+**Query Parameters:**
+- `slugs` (required): Comma-separated list of kit slugs or full URLs
+  - Minimum: 2 kits
+  - Maximum: 30 kits
+
+**Response:** Array of `KitBulkSchema` objects
+
+**Example:**
+```
+GET /api/kits/bulk?slugs=manchester-united-2024-25-home-kit,liverpool-2024-25-away-kit
+```
+
+**Example with URLs:**
+```
+GET /api/kits/bulk?slugs=https://www.footballkitarchive.com/manchester-united-2024-25-home-kit,liverpool-2024-25-away-kit
+```
+
+**Response Format:**
+```json
+[
+  {
+    "name": "Manchester United 2024-25 Home Kit",
+    "team": {
+      "name": "Manchester United",
+      "logo": "https://...",
+      "logo_dark": "https://...",
+      "country": "GB"
+    },
+    "season": {
+      "year": "2024-25"
+    },
+    "brand": {
+      "name": "Adidas",
+      "logo": "https://...",
+      "logo_dark": "https://..."
+    },
+    "main_img_url": "https://..."
+  }
+]
+```
+
+**Notes:**
+- The endpoint accepts both slugs (e.g., `kit-slug-1`) and full URLs (e.g., `https://www.footballkitarchive.com/kit-slug-1`)
+- URLs are automatically parsed to extract the slug
+- Results are returned in the same order as the input slugs
+- Missing kits are silently skipped (not included in the response)
+- The response format is optimized for bulk operations and includes only essential fields
+
+**Error Responses:**
+- `400 Bad Request` or `422 Unprocessable Entity`: If less than 2 or more than 30 kits are requested
+```json
+{
+  "detail": "Minimum 2 kits required"
+}
+```
+or
+```json
+{
+  "detail": "Maximum 30 kits allowed"
+}
+```
+
 ### Get Random Kits
 
 **GET** `/api/random-kits/`

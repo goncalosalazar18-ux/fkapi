@@ -28,13 +28,17 @@ from core.exceptions import (
 )
 from core.models import Brand, Club, Competition, Kit, Season
 from core.serializers import (
+    BrandBulkSchema,
     BrandJsonSchema,
+    ClubBulkSchema,
     ClubJsonSchema,
     ClubSerializer,
     ColorJsonSchema,
     CompetitionJsonSchema,
+    KitBulkSchema,
     KitJsonSchema,
     KitSerializer,
+    SeasonBulkSchema,
     SeasonJsonSchema,
     SeasonSerializer,
     TypeJsonSchema,
@@ -1266,6 +1270,128 @@ def search_kits(
                 "season_year": kit.season.year,
             }
         )
+    cache.set(cache_key, results, timeout=settings.CACHE_TIMEOUT_MEDIUM)
+    return results
+
+
+def _extract_slug_from_url(url_or_slug: str) -> str:
+    """
+    Extract slug from URL or return slug as-is.
+
+    Examples:
+    - "kit-slug" -> "kit-slug"
+    - "https://www.footballkitarchive.com/kit-slug" -> "kit-slug"
+    - "https://www.footballkitarchive.com/kit-slug/" -> "kit-slug"
+    """
+    url_or_slug = url_or_slug.strip()
+    if not url_or_slug:
+        return ""
+
+    # If it's a URL, extract the slug
+    if url_or_slug.startswith("http"):
+        # Remove trailing slash
+        url_or_slug = url_or_slug.rstrip("/")
+        # Extract the last part after the last slash
+        parts = url_or_slug.split("/")
+        if parts:
+            return parts[-1]
+    return url_or_slug
+
+
+@api.get(
+    "/kits/bulk",
+    response=list[KitBulkSchema],
+    summary="Get Kits in Bulk",
+    description="""
+    Retrieve multiple kits by their slugs or URLs in a single request.
+
+    **Parameters:**
+    - `slugs` (required): Comma-separated list of kit slugs or full URLs
+    - Minimum: 2 kits
+    - Maximum: 30 kits
+
+    **Examples:**
+    - `/api/kits/bulk?slugs=kit-slug-1,kit-slug-2`
+    - `/api/kits/bulk?slugs=https://www.footballkitarchive.com/kit-slug-1,kit-slug-2`
+
+    **Response:**
+    Returns a reduced response format optimized for bulk requests.
+    Only includes essential fields: name, team (name, logos, country), season (year), brand (name, logos), and main image URL.
+    """,
+    tags=["Kits"],
+)
+def get_kits_bulk(
+    request: HttpRequest,
+    slugs: str = Query(..., description="Comma-separated list of kit slugs or URLs", example="kit-slug-1,kit-slug-2"),
+) -> list[KitBulkSchema]:
+    """
+    Get multiple kits by slugs or URLs in bulk.
+
+    Args:
+        request: The HTTP request
+        slugs: Comma-separated list of kit slugs or full URLs
+
+    Returns:
+        List[KitBulkSchema]: List of kits in reduced format
+
+    Raises:
+        ValidationError: If number of kits is not between 2 and 30
+    """
+    from django.conf import settings
+
+    # Parse and clean slugs
+    slug_list = [s.strip() for s in slugs.split(",") if s.strip()]
+    slug_list = [_extract_slug_from_url(slug) for slug in slug_list if _extract_slug_from_url(slug)]
+
+    # Validate count
+    if len(slug_list) < 2:
+        raise ValidationError("Minimum 2 kits required")
+    if len(slug_list) > 30:
+        raise ValidationError("Maximum 30 kits allowed")
+
+    # Generate cache key
+    cache_key = generate_cache_key("kits_bulk", ",".join(sorted(slug_list)))
+    cached_result = cache.get(cache_key)
+
+    if cached_result is not None:
+        return cached_result
+
+    # Fetch kits
+    kits = Kit.objects.filter(slug__in=slug_list).select_related("team", "season", "brand")
+
+    # Create a mapping by slug for ordered response
+    kits_dict = {kit.slug: kit for kit in kits}
+
+    # Build response in the same order as input
+    results = []
+    for slug in slug_list:
+        if slug in kits_dict:
+            kit = kits_dict[slug]
+
+            # Get country information if available
+            country_code = None
+            if hasattr(kit.team, "country") and kit.team.country:
+                country_code = kit.team.country.code
+
+            results.append(
+                KitBulkSchema(
+                    name=kit.name,
+                    team=ClubBulkSchema(
+                        name=kit.team.name,
+                        logo=kit.team.logo,
+                        logo_dark=kit.team.logo_dark,
+                        country=country_code,
+                    ),
+                    season=SeasonBulkSchema(year=kit.season.year),
+                    brand=BrandBulkSchema(
+                        name=kit.brand.name,
+                        logo=kit.brand.logo,
+                        logo_dark=kit.brand.logo_dark,
+                    ),
+                    main_img_url=kit.main_img_url,
+                )
+            )
+
     cache.set(cache_key, results, timeout=settings.CACHE_TIMEOUT_MEDIUM)
     return results
 

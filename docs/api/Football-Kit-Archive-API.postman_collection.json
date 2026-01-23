@@ -329,6 +329,34 @@
 					"response": []
 				},
 				{
+					"name": "Get Kits in Bulk",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-API-Key",
+								"value": "{{api_key}}",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/kits/bulk?slugs=manchester-united-2024-25-home-kit,liverpool-2024-25-away-kit",
+							"host": ["{{base_url}}"],
+							"path": ["api", "kits", "bulk"],
+							"query": [
+								{
+									"key": "slugs",
+									"value": "manchester-united-2024-25-home-kit,liverpool-2024-25-away-kit",
+									"description": "Comma-separated list of kit slugs or full URLs (min: 2, max: 30)"
+								}
+							]
+						},
+						"description": "Retrieve multiple kits by their slugs or URLs in a single request. This endpoint is optimized for bulk operations and returns a reduced response format with only essential fields: name, team (name, logos, country), season (year), brand (name, logos), and main image URL. Accepts both slugs (e.g., 'kit-slug-1') and full URLs (e.g., 'https://www.footballkitarchive.com/kit-slug-1'). Results are returned in the same order as the input slugs. Missing kits are silently skipped."
+					},
+					"response": []
+				},
+				{
 					"name": "Send Kit to External API",
 					"request": {
 						"method": "GET",

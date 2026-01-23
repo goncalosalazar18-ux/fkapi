@@ -85,3 +85,32 @@ class KitJsonSchema(Schema):
     primary_color: ColorJsonSchema | None = None
     secondary_color: list[ColorJsonSchema] | None = None
     main_img_url: str
+
+
+class ClubBulkSchema(Schema):
+    """Reduced club schema for bulk responses."""
+    name: str
+    logo: str | None = None
+    logo_dark: str | None = None
+    country: str | None = None
+
+
+class SeasonBulkSchema(Schema):
+    """Reduced season schema for bulk responses."""
+    year: str
+
+
+class BrandBulkSchema(Schema):
+    """Reduced brand schema for bulk responses."""
+    name: str
+    logo: str | None = None
+    logo_dark: str | None = None
+
+
+class KitBulkSchema(Schema):
+    """Reduced kit schema for bulk responses."""
+    name: str
+    team: ClubBulkSchema
+    season: SeasonBulkSchema
+    brand: BrandBulkSchema
+    main_img_url: str
