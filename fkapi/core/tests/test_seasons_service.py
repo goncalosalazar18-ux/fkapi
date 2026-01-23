@@ -97,4 +97,3 @@ class SeasonsServiceTests(TestCase):
         self.assertEqual(stats["seasons_with_second_year"], 2)
         self.assertEqual(stats["min_year"], 2023)
         self.assertEqual(stats["max_year"], 2025)
-

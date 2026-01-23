@@ -60,7 +60,8 @@ def build_kit_url(slug: str, kit_id: str | None = None) -> str:
     else:
         # Try to extract kit_id from slug if it ends with digits
         import re
-        match = re.match(r'^(.+?)(\d+)$', slug)
+
+        match = re.match(r"^(.+?)(\d+)$", slug)
         if match:
             base_slug = match.group(1)
             extracted_id = match.group(2)
@@ -109,10 +110,10 @@ def get_season(season_slug: str, season_display: str | None = None) -> Season:
         import re
 
         # Clean "(Carry-over)" text - we don't differentiate between carry-over and normal seasons
-        season_slug = re.sub(r'\s*\(Carry-over\)\s*', '', season_slug, flags=re.IGNORECASE).strip()
+        season_slug = re.sub(r"\s*\(Carry-over\)\s*", "", season_slug, flags=re.IGNORECASE).strip()
 
         # Check if the input is a 2-digit year format (e.g., '24-25', '23-24', '99-00')
-        two_digit_year_match = re.match(r'^(\d{2})(?:-(\d{2}))?$', season_slug)
+        two_digit_year_match = re.match(r"^(\d{2})(?:-(\d{2}))?$", season_slug)
         if two_digit_year_match and len(season_slug) <= 7:
             first_year_short = two_digit_year_match.group(1)
             second_year_short = two_digit_year_match.group(2)
@@ -155,14 +156,10 @@ def get_season(season_slug: str, season_display: str | None = None) -> Season:
             try:
                 return Season.objects.get(year=year_str)
             except Season.DoesNotExist:
-                return Season.objects.create(
-                    year=year_str,
-                    first_year=first_year,
-                    second_year=second_year
-                )
+                return Season.objects.create(year=year_str, first_year=first_year, second_year=second_year)
 
         # Check if the input is a direct year format (e.g., '2024', '2023-24', '1999-00', '2023-2024')
-        direct_year_match = re.match(r'^(\d{4})(?:-(\d{2}|\d{4}))?$', season_slug)
+        direct_year_match = re.match(r"^(\d{4})(?:-(\d{2}|\d{4}))?$", season_slug)
 
         if direct_year_match:
             # Direct year format
@@ -198,7 +195,7 @@ def get_season(season_slug: str, season_display: str | None = None) -> Season:
             # Try to extract year from a full kit slug
             # Find ALL potential year matches to handle cases where club name contains a year
             # (e.g., "fc-rouen-1899-2023-24-home-kit" should use 2023, not 1899)
-            all_year_matches = list(re.finditer(r'-(\d{4})(?:-(\d{2}))?-', season_slug + '-'))
+            all_year_matches = list(re.finditer(r"-(\d{4})(?:-(\d{2}))?-", season_slug + "-"))
             if not all_year_matches:
                 raise ValueError(f"Could not find year in slug: {season_slug}")
 
@@ -242,39 +239,27 @@ def get_season(season_slug: str, season_display: str | None = None) -> Season:
         try:
             first_year_int = int(first_year)
         except ValueError as err:
-            raise InvalidSeasonError(
-                season_slug,
-                f"first_year '{first_year}' is not a valid integer"
-            ) from err
+            raise InvalidSeasonError(season_slug, f"first_year '{first_year}' is not a valid integer") from err
 
         # Validate year range for first_year
         if first_year_int < 1800 or first_year_int > 2100:
-            raise InvalidSeasonError(
-                season_slug,
-                f"first_year '{first_year}' is out of valid range (1800-2100)"
-            )
+            raise InvalidSeasonError(season_slug, f"first_year '{first_year}' is out of valid range (1800-2100)")
 
         if second_year:
             try:
                 second_year_int = int(second_year)
             except ValueError as err:
-                raise InvalidSeasonError(
-                    season_slug,
-                    f"second_year '{second_year}' is not a valid integer"
-                ) from err
+                raise InvalidSeasonError(season_slug, f"second_year '{second_year}' is not a valid integer") from err
 
             # Validate year range for second_year
             if second_year_int < 1800 or second_year_int > 2100:
-                raise InvalidSeasonError(
-                    season_slug,
-                    f"second_year '{second_year}' is out of valid range (1800-2100)"
-                )
+                raise InvalidSeasonError(season_slug, f"second_year '{second_year}' is out of valid range (1800-2100)")
 
             # Validate that second_year is not before first_year
             if second_year_int < first_year_int:
                 raise InvalidSeasonError(
                     season_slug,
-                    f"second_year '{second_year}' ({second_year_int}) cannot be before first_year '{first_year}' ({first_year_int})"
+                    f"second_year '{second_year}' ({second_year_int}) cannot be before first_year '{first_year}' ({first_year_int})",
                 )
 
             # Validate year span
@@ -287,18 +272,14 @@ def get_season(season_slug: str, season_display: str | None = None) -> Season:
             if year_span > max_span:
                 raise InvalidSeasonError(
                     season_slug,
-                    f"Year span is {year_span} years (max allowed: {max_span}). first_year: {first_year}, second_year: {second_year}"
+                    f"Year span is {year_span} years (max allowed: {max_span}). first_year: {first_year}, second_year: {second_year}",
                 )
 
         # Try to get existing season first
         try:
             return Season.objects.get(year=year_str)
         except Season.DoesNotExist:
-            return Season.objects.create(
-                year=year_str,
-                first_year=first_year,
-                second_year=second_year
-            )
+            return Season.objects.create(year=year_str, first_year=first_year, second_year=second_year)
 
     except Exception as e:
         raise InvalidSeasonError(season_slug, f"Error processing season from slug '{season_slug}': {str(e)}") from e
@@ -312,7 +293,7 @@ def get_season_e(season_slug: str) -> Season:
     import re
 
     # Check if it's in the format '2023-2024' (4-digit year - 4-digit year)
-    match = re.match(r'^(\d{4})-(\d{4})$', season_slug)
+    match = re.match(r"^(\d{4})-(\d{4})$", season_slug)
     if match:
         first_year = match.group(1)
         second_year = match.group(2)
@@ -321,17 +302,15 @@ def get_season_e(season_slug: str) -> Season:
         try:
             return Season.objects.get(year=season_slug)
         except Season.DoesNotExist:
-            return Season.objects.create(
-                year=season_slug,
-                first_year=first_year,
-                second_year=second_year
-            )
+            return Season.objects.create(year=season_slug, first_year=first_year, second_year=second_year)
 
     # For other formats, use the standard get_season function
     return get_season(season_slug)
 
 
-def scrape_kit(slug: str, kit_id: str | None = None, use_proxy: bool = False, existing_kit_id: int | None = None) -> Kit | None:
+def scrape_kit(
+    slug: str, kit_id: str | None = None, use_proxy: bool = False, existing_kit_id: int | None = None
+) -> Kit | None:
     """
     Scrapes a kit from footballkitarchive.com using its slug and optional kit_id.
 
@@ -379,11 +358,13 @@ def scrape_kit(slug: str, kit_id: str | None = None, use_proxy: bool = False, ex
 
             # Parse HTML
             logger.debug("Parsing HTML response")
-            soup = BeautifulSoup(response.text, 'html.parser')
+            soup = BeautifulSoup(response.text, "html.parser")
 
             # Check for actual page not found messages (not network 404s)
             # Look for specific "The requested page could not be found" message
-            page_not_found_text = soup.find(string=lambda text: text and "The requested page could not be found" in text)
+            page_not_found_text = soup.find(
+                string=lambda text: text and "The requested page could not be found" in text
+            )
             if page_not_found_text:
                 logger.warning(f"Page moved: Kit {slug} - 'The requested page could not be found'")
                 raise KitNotFoundError(slug, f"Kit not found: {slug}")
@@ -456,14 +437,6 @@ def scrape_kit(slug: str, kit_id: str | None = None, use_proxy: bool = False, ex
             return None
 
 
-
-
-
-
-
-
-
-
 def _try_new_url_format(slug: str) -> tuple[str | None, str | None]:
     """
     Tries to convert old URL format to new format with ID.
@@ -480,7 +453,7 @@ def _try_new_url_format(slug: str) -> tuple[str | None, str | None]:
     import re
 
     # Check if slug ends with digits (ID)
-    match = re.match(r'^(.+?)(\d+)$', slug)
+    match = re.match(r"^(.+?)(\d+)$", slug)
     if match:
         base_slug = match.group(1)
         kit_id = match.group(2)
@@ -514,7 +487,7 @@ def scrape_competition(slug: str, use_proxy: bool = False) -> Competition | None
             response = http_get(f"{BASE_URL}/{slug}", use_proxy=use_proxy)
             response.raise_for_status()
 
-            soup = BeautifulSoup(response.text, 'html.parser')
+            soup = BeautifulSoup(response.text, "html.parser")
 
             # Get competition name
             title = soup.find("span", class_="main-title")
@@ -525,8 +498,7 @@ def scrape_competition(slug: str, use_proxy: bool = False) -> Competition | None
 
             # Create or update competition
             competition, created = Competition.objects.update_or_create(
-                slug=slug.replace("/", ""),
-                defaults={'name': name}
+                slug=slug.replace("/", ""), defaults={"name": name}
             )
 
             if created:
@@ -581,7 +553,7 @@ def scrape_club_details(slug: str, use_proxy: bool = False) -> Club | None:
             response.raise_for_status()
 
             # Parse HTML
-            soup = BeautifulSoup(response.text, 'html.parser')
+            soup = BeautifulSoup(response.text, "html.parser")
 
             # Get club name
             title_elem = soup.find("span", class_="main-title")
@@ -597,15 +569,12 @@ def scrape_club_details(slug: str, use_proxy: bool = False) -> Club | None:
 
             # Create or update club
             with transaction.atomic():
-                club, created = Club.objects.update_or_create(
-                    slug=slug,
-                    defaults={'name': name}
-                )
+                club, created = Club.objects.update_or_create(slug=slug, defaults={"name": name})
 
                 try:
                     logo_img = main_header.find("img")
                     if logo_img and "data-src" in logo_img.attrs:
-                        logo_path = logo_img['data-src'].lstrip('/')
+                        logo_path = logo_img["data-src"].lstrip("/")
                         logo_url = f"{BASE_URL.rstrip('/')}/{logo_path}"
 
                         # Handle dark logo variant
@@ -618,7 +587,7 @@ def scrape_club_details(slug: str, use_proxy: bool = False) -> Club | None:
                         raise ValueError("Logo image not found")
 
                 except Exception as e:
-                    print(Fore.YELLOW + f'Logo error for {club}: {str(e)}. Using default.')
+                    print(Fore.YELLOW + f"Logo error for {club}: {str(e)}. Using default.")
                     club.logo = DEFAULT_LOGO_URL
 
                 club.save()
@@ -672,7 +641,7 @@ def scrape_whole_club(club: Club) -> Club | None:
             response.raise_for_status()
 
             # Parse HTML
-            soup = BeautifulSoup(response.text, 'html.parser')
+            soup = BeautifulSoup(response.text, "html.parser")
             container = soup.find("div", class_="archive-content-container")
             if not container:
                 raise ValueError("Archive content container not found")
@@ -763,11 +732,7 @@ def _get_or_create_brand(brand_slug: str) -> Brand | None:
             brand_name = brand_name.replace("-", " ").strip().title()
 
             print(f"Logo error for {brand_name}: {str(e)}. Using default.")
-            brand = Brand.objects.create(
-                name=brand_name,
-                slug=brand_slug,
-                logo=DEFAULT_LOGO_URL
-            )
+            brand = Brand.objects.create(name=brand_name, slug=brand_slug, logo=DEFAULT_LOGO_URL)
             print(f"Created brand: {brand.name}")
             return brand
 
@@ -800,9 +765,12 @@ def _process_kit(kit_element: BeautifulSoup, club: Club, season: Season, brand: 
         if season.year in type_text.text:
             type_name = type_text.text.strip().replace(season.year, "").strip()
         else:
-            unformatted_year= f'{season.first_year}-{season.second_year[:2]}'
+            unformatted_year = f"{season.first_year}-{season.second_year[:2]}"
             type_name = type_text.text.strip().replace(unformatted_year, "").strip()
-        type_k, _ = Type_K.objects.get_or_create(name=type_name)
+        type_k, created = Type_K.objects.get_or_create(name=type_name)
+        if created:
+            type_k.categorize()
+            type_k.save()
 
         # Scrape full kit details
         return scrape_kit_lite(clean_slug, brand, season, type_k, club, kit_id=kit_id)
@@ -819,7 +787,7 @@ def scrape_kit_lite(
     type_k: Type_K,
     club: Club,
     kit_id: str | None = None,
-    use_proxy: bool = True
+    use_proxy: bool = True,
 ) -> Kit | None:
     """
     Scrapes a kit with minimal information, used for bulk scraping.
@@ -857,7 +825,7 @@ def scrape_kit_lite(
             response.raise_for_status()
 
             # Parse HTML
-            soup = BeautifulSoup(response.text, 'html.parser')
+            soup = BeautifulSoup(response.text, "html.parser")
 
             # Get fact table
             table = soup.find("table", class_="fact-table")
@@ -910,16 +878,16 @@ def scrape_kit_lite(
                 kit, created = Kit.objects.get_or_create(
                     slug=slug,
                     defaults={
-                        'name': kit_name,
-                        'team': club,
-                        'season': season,
-                        'type': type_k,
-                        'brand': brand,
-                        'rating': rating,
-                        'kit_id': kit_id,
-                        'main_img_url': main_img_url,
-                        'design': design
-                    }
+                        "name": kit_name,
+                        "team": club,
+                        "season": season,
+                        "type": type_k,
+                        "brand": brand,
+                        "rating": rating,
+                        "kit_id": kit_id,
+                        "main_img_url": main_img_url,
+                        "design": design,
+                    },
                 )
 
                 # Update kit if it already existed
@@ -1012,7 +980,7 @@ def scrape_brand(slug: str, use_proxy: bool = False) -> Brand | None:
             response.raise_for_status()
 
             # Parse HTML
-            soup = BeautifulSoup(response.text, 'html.parser')
+            soup = BeautifulSoup(response.text, "html.parser")
 
             # Get brand name
             title_elem = soup.find("span", class_="main-title")
@@ -1028,15 +996,12 @@ def scrape_brand(slug: str, use_proxy: bool = False) -> Brand | None:
 
             # Create or update brand
             with transaction.atomic():
-                brand, created = Brand.objects.get_or_create(
-                    slug=slug,
-                    defaults={'name': name}
-                )
+                brand, created = Brand.objects.get_or_create(slug=slug, defaults={"name": name})
 
                 try:
                     logo_img = main_header.find("img")
                     if logo_img and "data-src" in logo_img.attrs:
-                        logo_path = logo_img['data-src'].lstrip('/')
+                        logo_path = logo_img["data-src"].lstrip("/")
                         logo_url = f"{BASE_URL.rstrip('/')}/{logo_path}"
 
                         # Handle dark logo variant
@@ -1049,7 +1014,7 @@ def scrape_brand(slug: str, use_proxy: bool = False) -> Brand | None:
                         raise ValueError("Logo image not found")
 
                 except Exception as e:
-                    print(Fore.YELLOW + f'Logo error for {brand}: {str(e)}. Using default.')
+                    print(Fore.YELLOW + f"Logo error for {brand}: {str(e)}. Using default.")
                     brand.logo = f"{BASE_URL}/static/logos/not_found.png"
 
                 brand.save()
@@ -1108,7 +1073,7 @@ def scrape_lastest(page: int = 1, use_proxy: bool = False) -> tuple[bool, bool]:
             response.raise_for_status()
 
             # Parse HTML
-            soup = BeautifulSoup(response.text, 'html.parser')
+            soup = BeautifulSoup(response.text, "html.parser")
             kit_container = soup.find("div", class_=KIT_CONTAINER_CLASS)
             if not kit_container:
                 raise ValueError("Kit container not found")
@@ -1137,7 +1102,7 @@ def scrape_lastest(page: int = 1, use_proxy: bool = False) -> tuple[bool, bool]:
                 try:
                     # Check if kit already exists (slug is already cleaned)
                     # Use only() to avoid loading kit_id if column doesn't exist yet
-                    existing_kit = Kit.objects.filter(slug=clean_slug).only('id', 'slug').first()
+                    existing_kit = Kit.objects.filter(slug=clean_slug).only("id", "slug").first()
                     if existing_kit:
                         existing_kits_count += 1
                         # Update kit_id if it's missing and we have one
@@ -1198,7 +1163,7 @@ def scrape_latest_pages(
     use_proxy: bool = False,
     delay: int = 2,
     progress_callback: callable = None,
-    reverse_order: bool = False
+    reverse_order: bool = False,
 ) -> tuple[int, int]:
     """
     Scrapes a range of latest kit pages from footballkitarchive.com.
@@ -1263,5 +1228,3 @@ def scrape_latest_pages(
     print(f"Pages failed: {failure_count}")
 
     return success_count, failure_count
-
-

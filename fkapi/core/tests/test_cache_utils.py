@@ -68,7 +68,6 @@ class SetupCacheInvalidationTests(TestCase):
         self.assertGreaterEqual(mock_post_save_connect.call_count, 1)
         self.assertGreaterEqual(mock_post_delete_connect.call_count, 1)
 
-
     @patch("core.cache_utils.logger")
     @patch("django_redis.get_redis_connection")
     def test_invalidate_patterns_handles_exceptions(
@@ -108,4 +107,3 @@ class SetupCacheInvalidationTests(TestCase):
 
         _invalidate_patterns(["test_pattern"])
         mock_logger.debug.assert_called()
-

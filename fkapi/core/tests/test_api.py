@@ -79,6 +79,52 @@ class APITests(TestCase):
         data = response.json()
         self.assertIsInstance(data, list)
 
+    def test_search_seasons_priority_ordering(self):
+        """Test season search endpoint returns results in correct priority order."""
+        # Clear cache to ensure fresh results
+        from django.core.cache import cache
+
+        cache.clear()
+
+        # Create test seasons for priority testing (using get_or_create to avoid conflicts)
+        season_exact, _ = Season.objects.get_or_create(
+            year="2025", defaults={"first_year": "2025", "second_year": None}
+        )
+        season_starts_with, _ = Season.objects.get_or_create(
+            year="2025-26", defaults={"first_year": "2025", "second_year": "2026"}
+        )
+        season_ends_with, _ = Season.objects.get_or_create(
+            year="2024-25", defaults={"first_year": "2024", "second_year": "2025"}
+        )
+        season_contains, _ = Season.objects.get_or_create(
+            year="2025-27", defaults={"first_year": "2025", "second_year": "2027"}
+        )
+
+        response = self.client.get("/api/seasons/search", {"keyword": "2025"})
+        self.assertEqual(response.status_code, 200, f"Response: {response.content}")
+        data = response.json()
+        self.assertIsInstance(data, list)
+        self.assertGreaterEqual(len(data), 1)
+
+        # Extract years from response
+        years = [season["year"] for season in data]
+
+        # Verify priority order: exact match first, then starts with, then ends with, then contains
+        if "2025" in years:
+            exact_index = years.index("2025")
+            # Exact match should be first
+            self.assertEqual(exact_index, 0, "Exact match '2025' should be first")
+
+        if "2025-26" in years and "2024-25" in years:
+            starts_index = years.index("2025-26")
+            ends_index = years.index("2024-25")
+            # "2025-26" (starts with) should come before "2024-25" (ends with)
+            self.assertLess(
+                starts_index,
+                ends_index,
+                "'2025-26' (first_year='2025') should come before '2024-25' (second_year='2025')",
+            )
+
     def test_get_kit_json(self):
         """Test get kit details endpoint."""
         response = self.client.get(f"/api/kits/{self.kit.id}")
@@ -87,6 +133,26 @@ class APITests(TestCase):
         self.assertIn("name", data)
         self.assertIn("team", data)
         self.assertIn("season", data)
+        self.assertIn("type", data)
+
+        # Verify Type_K fields are included
+        type_data = data["type"]
+        self.assertIn("id", type_data)
+        self.assertIn("name", type_data)
+        self.assertIn("category", type_data)
+        self.assertIn("category_order", type_data)
+        self.assertIn("order_priority", type_data)
+        self.assertIn("is_goalkeeper", type_data)
+
+        # Verify values match the model (refresh to get latest values)
+        self.type_k.refresh_from_db()
+        # Verify all required fields are present and match model
+        self.assertIsInstance(type_data["id"], int)
+        self.assertEqual(type_data["name"], self.type_k.name)
+        self.assertEqual(type_data["category"], self.type_k.category)
+        self.assertEqual(type_data["category_order"], self.type_k.category_order)
+        self.assertEqual(type_data["order_priority"], self.type_k.order_priority)
+        self.assertEqual(type_data["is_goalkeeper"], self.type_k.is_goalkeeper)
 
     def test_get_random_kits(self):
         """Test random kits endpoint with pagination."""

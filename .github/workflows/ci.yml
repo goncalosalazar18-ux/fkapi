@@ -9,41 +9,41 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     strategy:
       matrix:
         python-version: ["3.10", "3.11"]
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
-      
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r fkapi/requirements.txt
           pip install -r fkapi/requirements-dev.txt
-      
+
       - name: Run linting
         run: |
           ruff check fkapi/
-      
+
       - name: Run Django checks
         working-directory: fkapi
         run: |
           python manage.py check
-      
+
       - name: Run tests with coverage
         working-directory: fkapi
         run: |
           pytest core/tests/ -v --cov=core --cov-report=xml:coverage.xml --cov-report=term-missing
-      
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:

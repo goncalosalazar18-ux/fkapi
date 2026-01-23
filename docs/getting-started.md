@@ -304,7 +304,7 @@ python manage.py check_broken_images
 
 ### Issue: Scraping Too Slow
 
-**Solution:** 
+**Solution:**
 1. Verify delays are not too high
 2. Check network connection
 3. Consider using proxy (if allowed by robots.txt)
@@ -360,5 +360,5 @@ python manage.py check_broken_images
 
 ---
 
-**Last Updated**: 2026-01-17  
+**Last Updated**: 2026-01-17
 **Maintained by**: sunr4y

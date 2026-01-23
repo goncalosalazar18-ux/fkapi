@@ -52,4 +52,3 @@ class HttpUtilsTests(SimpleTestCase):
         session.get.assert_called_once()
         called_kwargs = session.get.call_args.kwargs
         self.assertEqual(called_kwargs["proxies"], {"http": "http://proxy"})
-

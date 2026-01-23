@@ -75,11 +75,11 @@ DELAY_RANGE = (MIN_DELAY, MAX_DELAY)
 def scrape_with_delay(url):
     """Scrape URL with random delay."""
     response = requests.get(url)
-    
+
     # Random delay between requests
     delay = random.uniform(*DELAY_RANGE)
     time.sleep(delay)
-    
+
     return response
 ```
 
@@ -177,7 +177,7 @@ headers = {
    ```bash
    # Check robots.txt
    curl https://www.footballkitarchive.com/robots.txt
-   
+
    # Check Terms of Service
    # Visit: https://www.footballkitarchive.com/terms
    ```
@@ -189,7 +189,7 @@ headers = {
    HTTP_TIMEOUT=15
    HTTP_MAX_RETRIES=3
    HTTP_BACKOFF_FACTOR=0.5
-   
+
    # Optional: Use an HTTP proxy to distribute load (from any provider)
    # PROXY_URL=http://user:pass@proxy.example.com:8080/
    ```
@@ -251,7 +251,7 @@ python manage.py scrape_kit_by_slug --slug "manchester-united-2024-home-1-kit"
    ```bash
    # Check scraper logs for errors
    tail -f logs/scraper.log
-   
+
    # Look for:
    # - 429 Too Many Requests (reduce rate)
    # - 500/502/503 errors (server issues)
@@ -699,7 +699,7 @@ If you encounter issues:
 
 ---
 
-**Last Updated**: 2026-01-17  
+**Last Updated**: 2026-01-17
 **Maintained by**: sunr4y
 
 **Remember**: Always scrape responsibly and legally!

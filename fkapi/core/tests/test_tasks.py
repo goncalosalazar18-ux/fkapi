@@ -45,4 +45,3 @@ class TasksTests(TestCase):
         result = tasks.scrape_kit_task("slug-fail")
         self.assertEqual(result["success"], False)
         self.assertEqual(result["slug"], "slug-fail")
-

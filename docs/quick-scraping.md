@@ -84,7 +84,7 @@ for day in {1..7}; do
     python manage.py scrape_whole_club --club-slug "club1-kits"
     python manage.py scrape_whole_club --club-slug "club2-kits"
     # ... up to 10 clubs
-    
+
     # Wait 1 day before next batch
     sleep 86400
 done
@@ -454,7 +454,7 @@ docker-compose stop celery celerybeat
 
 ---
 
-**Last Updated**: 2026-01-17  
+**Last Updated**: 2026-01-17
 **Maintained by**: sunr4y
 
 **Remember**: Always scrape responsibly - respect robots.txt, use proper delays (2-5 seconds), don't overload servers, and monitor your scraping activity.

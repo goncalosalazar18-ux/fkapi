@@ -25,63 +25,41 @@ from core.scrapers import (
 
 # Create your tests here.
 
+
 class ScraperTests(TestCase):
     """Test cases for scraping functions."""
 
     def setUp(self):
         """Set up test data."""
         # Create base season
-        self.current_season = Season.objects.create(
-            year="2024-25",
-            first_year="2024",
-            second_year="2025"
-        )
+        self.current_season = Season.objects.create(year="2024-25", first_year="2024", second_year="2025")
 
         # Create test clubs
-        self.club = Club.objects.create(
-            slug="fc-copenhagen-kits",
-            name="FC Copenhagen"
-        )
+        self.club = Club.objects.create(slug="fc-copenhagen-kits", name="FC Copenhagen")
 
         # Create test brand
-        self.brand, _ = Brand.objects.get_or_create(
-            slug="adidas-kits",
-            defaults={'name': "adidas"}
-        )
+        self.brand, _ = Brand.objects.get_or_create(slug="adidas-kits", defaults={"name": "adidas"})
 
         # Create test competitions
-        self.competition = Competition.objects.create(
-            slug="superliga-kits",
-            name="Superliga"
-        )
+        self.competition = Competition.objects.create(slug="superliga-kits", name="Superliga")
 
         # Create test type
-        self.type_k, _ = Type_K.objects.get_or_create(
-            name="Third"
-        )
+        self.type_k, _ = Type_K.objects.get_or_create(name="Third")
 
-    @patch('core.scrapers.http_get')
+    @patch("core.scrapers.http_get")
     def test_scrape_kit(self, mock_http_get):
         """Test scrape_kit function with real season formats from the website."""
         test_cases = [
             {
                 "slug": "fc-copenhagen-2024-25-third-1-kit",
                 "html_season": "2024-25",
-                "expected": {
-                    "year": "2024-25",
-                    "first_year": "2024",
-                    "second_year": "2025"
-                }
+                "expected": {"year": "2024-25", "first_year": "2024", "second_year": "2025"},
             },
             {
                 "slug": "manchester-united-2024-home-kit",
                 "html_season": "2024",
-                "expected": {
-                    "year": "2024",
-                    "first_year": "2024",
-                    "second_year": None
-                }
-            }
+                "expected": {"year": "2024", "first_year": "2024", "second_year": None},
+            },
         ]
 
         for case in test_cases:
@@ -149,12 +127,9 @@ class ScraperTests(TestCase):
                 """
                 mock_http_get.return_value = mock_response
 
-                Club.objects.get_or_create(
-                    slug="fc-copenhagen-kits",
-                    defaults={'name': "FC Copenhagen"}
-                )
-                Color.objects.get_or_create(name="Blue", defaults={'color': "#0000FF"})
-                Color.objects.get_or_create(name="White", defaults={'color': "#FFFFFF"})
+                Club.objects.get_or_create(slug="fc-copenhagen-kits", defaults={"name": "FC Copenhagen"})
+                Color.objects.get_or_create(name="Blue", defaults={"color": "#0000FF"})
+                Color.objects.get_or_create(name="White", defaults={"color": "#FFFFFF"})
 
                 kit = scrape_kit(case["slug"])
 
@@ -166,7 +141,7 @@ class ScraperTests(TestCase):
                 self.assertEqual(kit.primary_color.name, "Blue")
                 self.assertEqual(kit.secondary_color.first().name, "White")
 
-    @patch('core.scrapers.http_get')
+    @patch("core.scrapers.http_get")
     def test_scrape_kit_errors(self, mock_http_get):
         """Test scrape_kit error handling."""
         test_cases = [
@@ -181,7 +156,7 @@ class ScraperTests(TestCase):
                         The requested page could not be found.
                     </div>
                 """,
-                "expected": None
+                "expected": None,
             },
             {
                 "name": "No rating",
@@ -233,8 +208,8 @@ class ScraperTests(TestCase):
                         </div>
                     </div>
                 """,
-                "expected": 0.0  # Should default to 0 when no rating
-            }
+                "expected": 0.0,  # Should default to 0 when no rating
+            },
         ]
 
         for case in test_cases:
@@ -245,10 +220,7 @@ class ScraperTests(TestCase):
                 mock_http_get.return_value = mock_response
 
                 # Ensure we have the test club in the database
-                Club.objects.get_or_create(
-                    slug="fc-copenhagen-kits",
-                    defaults={'name': "FC Copenhagen"}
-                )
+                Club.objects.get_or_create(slug="fc-copenhagen-kits", defaults={"name": "FC Copenhagen"})
 
                 if case["name"] == "404 error":
                     # For 404 errors, KitNotFoundError should be raised
@@ -262,7 +234,7 @@ class ScraperTests(TestCase):
                         self.assertIsNotNone(kit)
                         self.assertEqual(kit.rating, case["expected"])
 
-    @patch('core.scrapers.http_get')
+    @patch("core.scrapers.http_get")
     def test_scrape_kit_season_formats(self, mock_http_get):
         """Test scraping different season formats."""
         test_cases = [
@@ -315,7 +287,7 @@ class ScraperTests(TestCase):
                         </div>
                     </div>
                 """,
-                "expected": "2025"
+                "expected": "2025",
             },
             {
                 "name": "Two year season",
@@ -366,8 +338,8 @@ class ScraperTests(TestCase):
                         </div>
                     </div>
                 """,
-                "expected": "2024-25"
-            }
+                "expected": "2024-25",
+            },
         ]
 
         for case in test_cases:
@@ -377,16 +349,13 @@ class ScraperTests(TestCase):
                 mock_response.text = case["html"]
                 mock_http_get.return_value = mock_response
 
-                Club.objects.get_or_create(
-                    slug="fc-copenhagen-kits",
-                    defaults={'name': "FC Copenhagen"}
-                )
+                Club.objects.get_or_create(slug="fc-copenhagen-kits", defaults={"name": "FC Copenhagen"})
 
                 kit = scrape_kit("test-kit")
                 self.assertIsNotNone(kit, f"Kit should not be None for case {case['name']}")
                 self.assertEqual(kit.season.year, case["expected"], f"Season year mismatch for case {case['name']}")
 
-    @patch('core.scrapers.http_get')
+    @patch("core.scrapers.http_get")
     def test_scrape_kit_competitions(self, mock_http_get):
         """Test scraping competitions."""
         test_cases = [
@@ -421,7 +390,7 @@ class ScraperTests(TestCase):
                         </div>
                     </div>
                 """,
-                "expected": ["Superliga"]
+                "expected": ["Superliga"],
             },
             {
                 "name": "Multiple competitions",
@@ -457,8 +426,8 @@ class ScraperTests(TestCase):
                         </div>
                     </div>
                 """,
-                "expected": ["Superliga", "Champions League"]
-            }
+                "expected": ["Superliga", "Champions League"],
+            },
         ]
 
         for case in test_cases:
@@ -468,10 +437,7 @@ class ScraperTests(TestCase):
                 mock_response.text = case["html"]
                 mock_http_get.return_value = mock_response
 
-                Club.objects.get_or_create(
-                    slug="fc-copenhagen-kits",
-                    defaults={'name': "FC Copenhagen"}
-                )
+                Club.objects.get_or_create(slug="fc-copenhagen-kits", defaults={"name": "FC Copenhagen"})
 
                 kit = scrape_kit("test-kit")
                 self.assertIsNotNone(kit)
@@ -495,26 +461,10 @@ class ScraperTests(TestCase):
     def test_get_season(self):
         """Test get_season function with different formats."""
         test_cases = [
-            ("2024", {
-                "year": "2024",
-                "first_year": "2024",
-                "second_year": None
-            }),
-            ("2023-24", {
-                "year": "2023-24",
-                "first_year": "2023",
-                "second_year": "2024"
-            }),
-            ("1999-00", {
-                "year": "1999-00",
-                "first_year": "1999",
-                "second_year": "2000"
-            }),
-            ("1934-35", {
-                "year": "1934-35",
-                "first_year": "1934",
-                "second_year": "1935"
-            })
+            ("2024", {"year": "2024", "first_year": "2024", "second_year": None}),
+            ("2023-24", {"year": "2023-24", "first_year": "2023", "second_year": "2024"}),
+            ("1999-00", {"year": "1999-00", "first_year": "1999", "second_year": "2000"}),
+            ("1934-35", {"year": "1934-35", "first_year": "1934", "second_year": "1935"}),
         ]
 
         for input_year, expected in test_cases:
@@ -527,26 +477,10 @@ class ScraperTests(TestCase):
     def test_get_season_e(self):
         """Test get_season_e function with different formats."""
         test_cases = [
-            ("2024", {
-                "year": "2024",
-                "first_year": "2024",
-                "second_year": None
-            }),
-            ("2023-2024", {
-                "year": "2023-2024",
-                "first_year": "2023",
-                "second_year": "2024"
-            }),
-            ("1999-00", {
-                "year": "1999-00",
-                "first_year": "1999",
-                "second_year": "2000"
-            }),
-            ("1934-35", {
-                "year": "1934-35",
-                "first_year": "1934",
-                "second_year": "1935"
-            })
+            ("2024", {"year": "2024", "first_year": "2024", "second_year": None}),
+            ("2023-2024", {"year": "2023-2024", "first_year": "2023", "second_year": "2024"}),
+            ("1999-00", {"year": "1999-00", "first_year": "1999", "second_year": "2000"}),
+            ("1934-35", {"year": "1934-35", "first_year": "1934", "second_year": "1935"}),
         ]
 
         for input_year, expected in test_cases:
@@ -556,8 +490,8 @@ class ScraperTests(TestCase):
                 self.assertEqual(season.first_year, expected["first_year"])
                 self.assertEqual(season.second_year, expected["second_year"])
 
-    @patch('core.scrapers.time.sleep', return_value=None)
-    @patch('core.scrapers.http_get')
+    @patch("core.scrapers.time.sleep", return_value=None)
+    @patch("core.scrapers.http_get")
     def test_scrape_competition(self, mock_http_get, mock_sleep):
         """Test scraping competition details."""
         test_cases = [
@@ -570,25 +504,22 @@ class ScraperTests(TestCase):
                     </div>
                 """,
                 "slug": "premier-league-kits",
-                "expected": {
-                    "name": "Premier League",
-                    "slug": "premier-league-kits"
-                }
+                "expected": {"name": "Premier League", "slug": "premier-league-kits"},
             },
             {
                 "name": "404 error",
                 "status_code": 404,
                 "html": "<html></html>",
                 "slug": "nonexistent-league-kits",
-                "expected": None
+                "expected": None,
             },
             {
                 "name": "403 error",
                 "status_code": 403,
                 "html": "<html></html>",
                 "slug": "blocked-league-kits",
-                "expected": None
-            }
+                "expected": None,
+            },
         ]
 
         for case in test_cases:
@@ -610,7 +541,7 @@ class ScraperTests(TestCase):
                     self.assertEqual(competition.name, case["expected"]["name"])
                     self.assertEqual(competition.slug, case["expected"]["slug"])
 
-    @patch('core.scrapers.http_get')
+    @patch("core.scrapers.http_get")
     def test_scrape_brand(self, mock_http_get):
         """Test scraping brand details."""
         test_cases = [
@@ -624,11 +555,7 @@ class ScraperTests(TestCase):
                     </div>
                 """,
                 "slug": "nike-kits",
-                "expected": {
-                    "name": "Nike",
-                    "slug": "nike-kits",
-                    "has_logo": True
-                }
+                "expected": {"name": "Nike", "slug": "nike-kits", "has_logo": True},
             },
             {
                 "name": "No logo",
@@ -639,19 +566,15 @@ class ScraperTests(TestCase):
                     </div>
                 """,
                 "slug": "adidas-kits",
-                "expected": {
-                    "name": "Adidas",
-                    "slug": "adidas-kits",
-                    "has_logo": False
-                }
+                "expected": {"name": "Adidas", "slug": "adidas-kits", "has_logo": False},
             },
             {
                 "name": "404 error",
                 "status_code": 404,
                 "html": "<html></html>",
                 "slug": "nonexistent-brand-kits",
-                "expected": None
-            }
+                "expected": None,
+            },
         ]
 
         for case in test_cases:
@@ -679,8 +602,8 @@ class ScraperTests(TestCase):
                     else:
                         self.assertTrue(brand.logo.endswith("not_found.png"))
 
-    @patch('core.scrapers._process_kit')
-    @patch('core.scrapers.http_get')
+    @patch("core.scrapers._process_kit")
+    @patch("core.scrapers.http_get")
     def test_scrape_whole_club(self, mock_http_get, mock_process_kit):
         """Test scraping all kits for a club."""
         test_cases = [
@@ -709,10 +632,7 @@ class ScraperTests(TestCase):
                         </div>
                     </div>
                 """,
-                "expected": {
-                    "seasons": 1,
-                    "kits": 2
-                }
+                "expected": {"seasons": 1, "kits": 2},
             },
             {
                 "name": "No kits found",
@@ -721,17 +641,9 @@ class ScraperTests(TestCase):
                     <div class="archive-content-container">
                     </div>
                 """,
-                "expected": {
-                    "seasons": 0,
-                    "kits": 0
-                }
+                "expected": {"seasons": 0, "kits": 0},
             },
-            {
-                "name": "404 error",
-                "status_code": 404,
-                "html": "<html></html>",
-                "expected": None
-            }
+            {"name": "404 error", "status_code": 404, "html": "<html></html>", "expected": None},
         ]
 
         for case in test_cases:
@@ -758,13 +670,13 @@ class ScraperTests(TestCase):
         self.assertEqual(brand.slug, "adidas-kits")
 
         # Test creating new brand when scraping fails
-        with patch('core.scrapers.scrape_brand') as mock_scrape:
+        with patch("core.scrapers.scrape_brand") as mock_scrape:
             mock_scrape.side_effect = ValueError("Logo image not found")
             brand = _get_or_create_brand("new-brand-kits")
             self.assertEqual(brand.name, "New Brand")
             self.assertEqual(brand.slug, "new-brand-kits")
 
-    @patch('core.scrapers.requests.get')
+    @patch("core.scrapers.requests.get")
     def test_process_kit(self, mock_get):
         """Test _process_kit function."""
         test_cases = [
@@ -787,10 +699,7 @@ class ScraperTests(TestCase):
                         </button>
                     </div>
                 """,
-                "expected": {
-                    "type": "Home",
-                    "should_create": True
-                }
+                "expected": {"type": "Home", "should_create": True},
             },
             {
                 "name": "No link",
@@ -804,7 +713,7 @@ class ScraperTests(TestCase):
                         <div class="kit-season" title="2024-25 Home Kit">2024-25 Home</div>
                     </div>
                 """,
-                "expected": None
+                "expected": None,
             },
             {
                 "name": "No kit-season div",
@@ -819,13 +728,13 @@ class ScraperTests(TestCase):
                         </a>
                     </div>
                 """,
-                "expected": None
-            }
+                "expected": None,
+            },
         ]
 
         for case in test_cases:
             with self.subTest(case=case["name"]):
-                soup = BeautifulSoup(case["html"], 'html.parser')
+                soup = BeautifulSoup(case["html"], "html.parser")
                 kit_element = soup.find("div", class_="kit")
 
                 # Mock scrape_kit_lite response
@@ -881,7 +790,7 @@ class ScraperTests(TestCase):
                     self.assertIsNotNone(result)
                     self.assertEqual(result.type.name, case["expected"]["type"])
 
-    @patch('core.scrapers.http_get')
+    @patch("core.scrapers.http_get")
     def test_scrape_kit_lite(self, mock_http_get):
         """Test scrape_kit_lite function."""
         test_cases = [
@@ -933,12 +842,7 @@ class ScraperTests(TestCase):
                         <img class="top-image" data-src="test.jpg"/>
                     </div>
                 """,
-                "expected": {
-                    "rating": 4.5,
-                    "has_image": True,
-                    "design": "Striped",
-                    "colors": "Blue / White"
-                }
+                "expected": {"rating": 4.5, "has_image": True, "design": "Striped", "colors": "Blue / White"},
             },
             {
                 "name": "No rating",
@@ -981,11 +885,8 @@ class ScraperTests(TestCase):
                         <img class="top-image" data-src="test.jpg"/>
                     </div>
                 """,
-                "expected": {
-                    "rating": 0.0,
-                    "has_image": True
-                }
-            }
+                "expected": {"rating": 0.0, "has_image": True},
+            },
         ]
 
         for case in test_cases:
@@ -1004,16 +905,10 @@ class ScraperTests(TestCase):
 
                 # Create colors if needed
                 if "colors" in case["expected"]:
-                    Color.objects.get_or_create(name="Blue", defaults={'color': "#0000FF"})
-                    Color.objects.get_or_create(name="White", defaults={'color': "#FFFFFF"})
+                    Color.objects.get_or_create(name="Blue", defaults={"color": "#0000FF"})
+                    Color.objects.get_or_create(name="White", defaults={"color": "#FFFFFF"})
 
-                result = scrape_kit_lite(
-                    "test-kit",
-                    self.brand,
-                    self.current_season,
-                    self.type_k,
-                    self.club
-                )
+                result = scrape_kit_lite("test-kit", self.brand, self.current_season, self.type_k, self.club)
 
                 if case["expected"] is None:
                     self.assertIsNone(result)
@@ -1023,7 +918,7 @@ class ScraperTests(TestCase):
                     if case["expected"]["has_image"]:
                         self.assertEqual(result.main_img_url, "test.jpg")
 
-    @patch('core.scrapers.http_get')
+    @patch("core.scrapers.http_get")
     def test_scrape_club_details_full(self, mock_http_get):
         """Test scraping club details with full HTML response."""
         test_cases = [
@@ -1044,8 +939,8 @@ class ScraperTests(TestCase):
                 "slug": "loja-club-deportivo-kits",
                 "expected": {
                     "name": "Loja Club Deportivo",
-                    "logo": "https://www.footballkitarchive.com/static/logos/teams/6302.png?v=1660006928&s=128"
-                }
+                    "logo": "https://www.footballkitarchive.com/static/logos/teams/6302.png?v=1660006928&s=128",
+                },
             },
             {
                 "name": "Missing logo",
@@ -1058,9 +953,9 @@ class ScraperTests(TestCase):
                 "slug": "loja-club-deportivo-kits",
                 "expected": {
                     "name": "Loja Club Deportivo",
-                    "logo": "https://www.footballkitarchive.com/static/logos/not_found.png"
-                }
-            }
+                    "logo": "https://www.footballkitarchive.com/static/logos/not_found.png",
+                },
+            },
         ]
 
         for case in test_cases:
@@ -1079,7 +974,7 @@ class ScraperTests(TestCase):
                 self.assertEqual(club.name, case["expected"]["name"])
                 self.assertEqual(club.logo, case["expected"]["logo"])
 
-    @patch('core.scrapers.http_get')
+    @patch("core.scrapers.http_get")
     def test_scrape_kit_full(self, mock_http_get):
         """Test scraping kit details with full HTML response."""
         test_cases = [
@@ -1150,8 +1045,8 @@ class ScraperTests(TestCase):
                     "type": "Home",
                     "brand": "Kedeke",
                     "rating": 4.67,
-                    "main_img_url": "https://cdn.footballkitarchive.com/2024/02/04/Y3Zty9oc0wBF39R.jpg"
-                }
+                    "main_img_url": "https://cdn.footballkitarchive.com/2024/02/04/Y3Zty9oc0wBF39R.jpg",
+                },
             },
             {
                 "name": "No rating",
@@ -1213,9 +1108,9 @@ class ScraperTests(TestCase):
                     "type": "Home",
                     "brand": "Kedeke",
                     "rating": 0.0,
-                    "main_img_url": "https://cdn.footballkitarchive.com/2024/02/04/test.jpg"
-                }
-            }
+                    "main_img_url": "https://cdn.footballkitarchive.com/2024/02/04/test.jpg",
+                },
+            },
         ]
 
         for case in test_cases:
@@ -1230,18 +1125,12 @@ class ScraperTests(TestCase):
                 mock_http_get.return_value = mock_response
 
                 # Create required objects
-                Club.objects.create(
-                    slug="loja-club-deportivo-kits",
-                    name=case["expected"]["team_name"]
-                )
-                Brand.objects.create(
-                    slug="kedeke-kits",
-                    name=case["expected"]["brand"]
-                )
+                Club.objects.create(slug="loja-club-deportivo-kits", name=case["expected"]["team_name"])
+                Brand.objects.create(slug="kedeke-kits", name=case["expected"]["brand"])
 
                 # Create colors if needed
-                Color.objects.get_or_create(name="Red", defaults={'color': "#FF0000"})
-                Color.objects.get_or_create(name="White", defaults={'color': "#FFFFFF"})
+                Color.objects.get_or_create(name="Red", defaults={"color": "#FF0000"})
+                Color.objects.get_or_create(name="White", defaults={"color": "#FFFFFF"})
 
                 kit = scrape_kit(case["slug"])
 
@@ -1253,8 +1142,8 @@ class ScraperTests(TestCase):
                 self.assertEqual(kit.rating, case["expected"]["rating"])
                 self.assertEqual(kit.main_img_url, case["expected"]["main_img_url"])
 
-    @patch('core.scrapers.scrape_kit')
-    @patch('core.scrapers.http_get')
+    @patch("core.scrapers.scrape_kit")
+    @patch("core.scrapers.http_get")
     def test_scrape_lastest(self, mock_http_get, mock_scrape_kit):
         """Test scraping latest kits page."""
         test_cases = [
@@ -1275,7 +1164,7 @@ class ScraperTests(TestCase):
                         </div>
                     </div>
                 """,
-                "expected": True
+                "expected": True,
             },
             {
                 "name": "Empty page",
@@ -1284,14 +1173,9 @@ class ScraperTests(TestCase):
                     <div class="kit-container">
                     </div>
                 """,
-                "expected": True
+                "expected": True,
             },
-            {
-                "name": "404 error",
-                "status_code": 404,
-                "html": "<html></html>",
-                "expected": False
-            }
+            {"name": "404 error", "status_code": 404, "html": "<html></html>", "expected": False},
         ]
 
         for case in test_cases:
@@ -1312,30 +1196,18 @@ class ScraperTests(TestCase):
                     # Backward compatibility
                     self.assertEqual(result, case["expected"])
 
-    @patch('core.scrapers.scrape_lastest')
+    @patch("core.scrapers.scrape_lastest")
     def test_scrape_latest_pages(self, mock_scrape_latest):
         """Test scraping multiple latest kit pages."""
         test_cases = [
-            {
-                "name": "All successful",
-                "pages": [(True, False), (True, False), (True, False)],
-                "expected": (3, 0)
-            },
-            {
-                "name": "Some failures",
-                "pages": [(True, False), (False, False), (True, False)],
-                "expected": (2, 1)
-            },
-            {
-                "name": "All failures",
-                "pages": [(False, False), (False, False), (False, False)],
-                "expected": (0, 3)
-            },
+            {"name": "All successful", "pages": [(True, False), (True, False), (True, False)], "expected": (3, 0)},
+            {"name": "Some failures", "pages": [(True, False), (False, False), (True, False)], "expected": (2, 1)},
+            {"name": "All failures", "pages": [(False, False), (False, False), (False, False)], "expected": (0, 3)},
             {
                 "name": "All kits exist (stop early)",
                 "pages": [(True, True), (True, False), (True, False)],
-                "expected": (1, 0)  # Stops after first page with all_kits_exist=True
-            }
+                "expected": (1, 0),  # Stops after first page with all_kits_exist=True
+            },
         ]
 
         for case in test_cases:
@@ -1345,7 +1217,7 @@ class ScraperTests(TestCase):
                 success, failure = scrape_latest_pages(
                     page_start=1,
                     page_end=len(case["pages"]),
-                    delay=0  # No delay for testing
+                    delay=0,  # No delay for testing
                 )
 
                 self.assertEqual((success, failure), case["expected"])
@@ -1354,7 +1226,7 @@ class ScraperTests(TestCase):
         with self.assertRaises(ValueError):
             scrape_latest_pages(page_start=2, page_end=1)
 
-    @patch('core.scrapers.http_get')
+    @patch("core.scrapers.http_get")
     def test_design_extraction(self, mock_http_get):
         """Test that the design field is correctly extracted and saved."""
         mock_response = Mock()
@@ -1418,13 +1290,10 @@ class ScraperTests(TestCase):
         """
         mock_http_get.return_value = mock_response
 
-        Color.objects.get_or_create(name="Blue", defaults={'color': "#0000FF"})
-        Color.objects.get_or_create(name="White", defaults={'color': "#FFFFFF"})
+        Color.objects.get_or_create(name="Blue", defaults={"color": "#0000FF"})
+        Color.objects.get_or_create(name="White", defaults={"color": "#FFFFFF"})
 
-        Club.objects.get_or_create(
-            name="FC Copenhagen",
-            slug="fc-copenhagen-kits"
-        )
+        Club.objects.get_or_create(name="FC Copenhagen", slug="fc-copenhagen-kits")
 
         kit = scrape_kit("fc-copenhagen-2024-25-third-kit")
 

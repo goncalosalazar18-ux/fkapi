@@ -318,8 +318,8 @@ Consider implementing:
 
 ---
 
-**Last Updated**: 2026-01-17  
-**Maintained by**: sunr4y  
-**API Documentation**: Available at `/api/docs` (Django Ninja - Interactive)  
-**Project Documentation**: Markdown files in `docs/` directory  
+**Last Updated**: 2026-01-17
+**Maintained by**: sunr4y
+**API Documentation**: Available at `/api/docs` (Django Ninja - Interactive)
+**Project Documentation**: Markdown files in `docs/` directory
 **Recommended**: Use `/api/docs` for API reference, Markdown files for project setup/architecture

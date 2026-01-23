@@ -583,7 +583,7 @@ from django.db import models
 
 class Kit(models.Model):
     # ... existing fields ...
-    
+
     class Meta:
         indexes = [
             models.Index(fields=['name']),
@@ -780,5 +780,5 @@ For deployment issues:
 
 ---
 
-**Last Updated**: 2026-01-17  
+**Last Updated**: 2026-01-17
 **Maintained by**: sunr4y

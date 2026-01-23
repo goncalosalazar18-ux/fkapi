@@ -53,6 +53,47 @@ class KitSearchResult(Schema):
 # Enable API key authentication if configured
 _api_auth = APIKeyAuth() if os.getenv("DJANGO_API_ENABLE_AUTH", "False").lower() in ("1", "true", "yes") else None
 
+
+def _get_season_priority(season: Season, keyword: str) -> int:
+    """
+    Calculate priority for season ordering in search results.
+
+    Priority order:
+    1. Exact match (e.g., "2025" matches "2025")
+    2. Starts with keyword (e.g., "2025" matches "2025-26" via first_year)
+    3. Ends with keyword (e.g., "2025" matches "2024-25" via second_year)
+    4. Contains keyword (e.g., "2025" matches "2025-27" via first_year or second_year)
+
+    For 2-digit years (e.g., "97"), interprets as full year (e.g., "1997"):
+    - Priority 2: first_year ends with "97" (e.g., "1997")
+    - Priority 3: second_year ends with "97" (e.g., "1996-97")
+
+    Args:
+        season: The Season object
+        keyword: The search keyword (e.g., "2025" or "97")
+
+    Returns:
+        Priority value (lower = higher priority)
+    """
+    if season.year == keyword:
+        return 1  # Exact match - highest priority
+    if season.first_year == keyword:
+        return 2  # Starts with keyword (first_year matches)
+    if season.second_year and season.second_year == keyword:
+        return 3  # Ends with keyword (second_year matches)
+
+    # Handle 2-digit years (e.g., "97" should match "1997")
+    if keyword.isdigit() and len(keyword) == 2:
+        if season.first_year and season.first_year.endswith(keyword):
+            return 2  # first_year ends with keyword (e.g., "1997" for "97")
+        if season.second_year and season.second_year.endswith(keyword):
+            return 3  # second_year ends with keyword (e.g., "1997" for "97")
+
+    if keyword in season.first_year or (season.second_year and keyword in season.second_year):
+        return 4  # Contains keyword in first_year or second_year
+    return 5  # Fallback (shouldn't happen if query is correct)
+
+
 api = NinjaAPI(
     title="Football Kit Archive API",
     description="""
@@ -128,47 +169,30 @@ api = NinjaAPI(
     auth=_api_auth,
     csrf=False,  # Disable CSRF for API endpoints
     openapi_extra={
-        "info": {
-            "license": {
-                "name": "MIT",
-                "url": "https://opensource.org/licenses/MIT"
-            }
-        },
+        "info": {"license": {"name": "MIT", "url": "https://opensource.org/licenses/MIT"}},
         "externalDocs": {
             "description": "📚 Complete Project Documentation - Setup guides, scraping practices, troubleshooting, and architecture",
-            "url": "http://localhost:8000/docs/"
+            "url": "http://localhost:8000/docs/",
         },
         "tags": [
-            {
-                "name": "System",
-                "description": "System endpoints for health checks, metrics, and monitoring"
-            },
+            {"name": "System", "description": "System endpoints for health checks, metrics, and monitoring"},
             {
                 "name": "Clubs",
-                "description": "Operations related to football clubs: search, retrieve, and manage club data"
+                "description": "Operations related to football clubs: search, retrieve, and manage club data",
             },
             {
                 "name": "Kits",
-                "description": "Operations related to football kits: search, retrieve complete kit information"
+                "description": "Operations related to football kits: search, retrieve complete kit information",
             },
             {
                 "name": "Seasons",
-                "description": "Operations related to football seasons: search and retrieve season data"
+                "description": "Operations related to football seasons: search and retrieve season data",
             },
-            {
-                "name": "Brands",
-                "description": "Operations related to kit brands (Adidas, Nike, Puma, etc.)"
-            },
-            {
-                "name": "Competitions",
-                "description": "Operations related to football competitions and leagues"
-            },
-            {
-                "name": "Testing",
-                "description": "Testing and development endpoints"
-            }
-        ]
-    }
+            {"name": "Brands", "description": "Operations related to kit brands (Adidas, Nike, Puma, etc.)"},
+            {"name": "Competitions", "description": "Operations related to football competitions and leagues"},
+            {"name": "Testing", "description": "Testing and development endpoints"},
+        ],
+    },
 )
 
 
@@ -204,7 +228,11 @@ def custom_exception_handler(request: HttpRequest, exc: Exception) -> Any:
     return api.create_response(request, {"detail": detail}, status=500)
 
 
-@api.get("/health", summary="Health Check", tags=["System"], description="""
+@api.get(
+    "/health",
+    summary="Health Check",
+    tags=["System"],
+    description="""
     Check if the API and database are functioning correctly.
 
     **Response:**
@@ -220,7 +248,8 @@ def custom_exception_handler(request: HttpRequest, exc: Exception) -> Any:
         "cache": "connected"
     }
     ```
-    """)
+    """,
+)
 def health_check(request: HttpRequest) -> dict[str, Any]:
     """
     Check if the API and database are functioning correctly.
@@ -267,7 +296,7 @@ def health_check(request: HttpRequest) -> dict[str, Any]:
     - Troubleshooting resources
     - Architecture and design documents
     """,
-    response=dict
+    response=dict,
 )
 def get_documentation_info(request: HttpRequest) -> dict[str, Any]:
     """
@@ -286,7 +315,7 @@ def get_documentation_info(request: HttpRequest) -> dict[str, Any]:
         "project": {
             "name": "Football Kit Archive API",
             "version": "1.0.0",
-            "description": "Comprehensive REST API for managing and retrieving football kit information"
+            "description": "Comprehensive REST API for managing and retrieving football kit information",
         },
         "documentation": {
             "available": docs_available,
@@ -295,45 +324,45 @@ def get_documentation_info(request: HttpRequest) -> dict[str, Any]:
                 "getting_started": {
                     "title": "Getting Started Guide",
                     "description": "Complete setup guide from scratch, including initial database population and ethical scraping practices",
-                    "file": "GETTING_STARTED.md"
+                    "file": "GETTING_STARTED.md",
                 },
                 "celery_setup": {
                     "title": "Celery Setup Guide",
                     "description": "Optional: Guide to setting up Celery for background tasks (recommended for production)",
-                    "file": "CELERY_SETUP.md"
+                    "file": "CELERY_SETUP.md",
                 },
                 "troubleshooting": {
                     "title": "Troubleshooting Guide",
                     "description": "Common issues and solutions for setup, scraping, API, and database problems",
-                    "file": "troubleshooting.md"
+                    "file": "troubleshooting.md",
                 },
                 "architecture": {
                     "title": "Architecture Documentation",
                     "description": "System architecture, design decisions, and data flow diagrams",
-                    "file": "architecture.md"
+                    "file": "architecture.md",
                 },
                 "developer_onboarding": {
                     "title": "Developer Onboarding",
                     "description": "Guide for new developers joining the project",
-                    "file": "developer-onboarding.md"
+                    "file": "developer-onboarding.md",
                 },
                 "ethical_scraping": {
                     "title": "Ethical Scraping Practices",
                     "description": "Guidelines for responsible web scraping: robots.txt, rate limiting, Terms of Service",
-                    "note": "See GETTING_STARTED.md section 'Legal and Ethical Reminders'"
-                }
+                    "note": "See GETTING_STARTED.md section 'Legal and Ethical Reminders'",
+                },
             },
             "api_documentation": {
                 "interactive": "/api/docs",
                 "openapi_schema": "/api/openapi.json",
                 "endpoint_catalog": "docs/api/endpoint-catalog.md",
-                "usage_examples": "docs/api/usage-examples.md"
+                "usage_examples": "docs/api/usage-examples.md",
             },
             "quick_links": {
                 "repository": "See repository root for full documentation",
                 "docs_directory": "docs/",
-                "api_docs": "http://localhost:8000/api/docs"
-            }
+                "api_docs": "http://localhost:8000/api/docs",
+            },
         },
         "ethical_scraping_reminders": {
             "important": "Always scrape responsibly",
@@ -346,14 +375,18 @@ def get_documentation_info(request: HttpRequest) -> dict[str, Any]:
                 "Don't overload servers",
                 "Handle errors gracefully",
                 "Monitor your scraping activity",
-                "Give attribution when displaying data"
+                "Give attribution when displaying data",
             ],
-            "legal_note": "Web scraping may be subject to legal restrictions. Always ensure you have permission to scrape the target website."
-        }
+            "legal_note": "Web scraping may be subject to legal restrictions. Always ensure you have permission to scrape the target website.",
+        },
     }
 
 
-@api.get("/metrics", summary="API Usage Metrics", tags=["System"], description="""
+@api.get(
+    "/metrics",
+    summary="API Usage Metrics",
+    tags=["System"],
+    description="""
     Get API usage statistics and performance metrics.
 
     **Response:**
@@ -372,13 +405,14 @@ def get_documentation_info(request: HttpRequest) -> dict[str, Any]:
         }
     }
     ```
-    """)
+    """,
+)
 def get_metrics(request: HttpRequest) -> dict[str, Any]:
     """
     Get API usage statistics and performance metrics.
     """
 
-    stats_key = 'api_usage_stats'
+    stats_key = "api_usage_stats"
     stats = cache.get(stats_key, {})
 
     metrics = {
@@ -386,15 +420,15 @@ def get_metrics(request: HttpRequest) -> dict[str, Any]:
     }
 
     for endpoint, data in stats.items():
-        count = data.get('count', 0)
-        total_duration = data.get('total_duration', 0.0)
-        total_queries = data.get('total_queries', 0)
+        count = data.get("count", 0)
+        total_duration = data.get("total_duration", 0.0)
+        total_queries = data.get("total_queries", 0)
 
         metrics["endpoints"][endpoint] = {
             "count": count,
             "avg_duration": round(total_duration / count, 3) if count > 0 else 0.0,
             "avg_queries": round(total_queries / count, 2) if count > 0 else 0,
-            "status_codes": dict(data.get('status_codes', {})),
+            "status_codes": dict(data.get("status_codes", {})),
         }
 
     return metrics
@@ -428,6 +462,55 @@ def _unaccent_filter(field: str, value: str) -> Q:
         return Q(**{f"{field}__unaccent__icontains": value})
     else:
         return Q(**{f"{field}__icontains": value})
+
+
+def _is_secondary_team(club_name: str) -> bool:
+    """
+    Check if a club name indicates it's a secondary team (B, C, youth, women's, etc.).
+
+    Returns True if the club name contains indicators of secondary teams that should
+    appear lower in search results.
+
+    Patterns detected:
+    - Roman numerals: II, III (for B and C teams)
+    - Letters B and C as standalone words
+    - Jong (as standalone word)
+    - Youth
+    - U17-U23 (all youth categories)
+    - Women's team indicators: Ladies, Women, Femenino, Féminas, Féminine, Lads
+    """
+    if not club_name:
+        return False
+
+    normalized = club_name.upper()
+
+    # Roman numerals for B and C teams (II, III)
+    if re.search(r"\bII\b", normalized) or re.search(r"\bIII\b", normalized):
+        return True
+
+    # B and C as standalone words (word boundaries)
+    if re.search(r"\bB\b", normalized) or re.search(r"\bC\b", normalized):
+        return True
+
+    # Jong as standalone word (careful not to match in middle of words)
+    if re.search(r"\bJONG\b", normalized):
+        return True
+
+    # Youth
+    if "YOUTH" in normalized:
+        return True
+
+    # U17-U23 (all youth categories)
+    if re.search(r"\bU(1[7-9]|2[0-3])\b", normalized):
+        return True
+
+    # Women's team indicators (case-insensitive)
+    women_indicators = ["LADIES", "WOMEN", "FEMENINO", "FÉMINAS", "FÉMININE", "LADS", "FRAUEN"]
+    for indicator in women_indicators:
+        if indicator in normalized:
+            return True
+
+    return False
 
 
 @api.get(
@@ -534,9 +617,9 @@ def search_clubs(
         return cached_result
 
     with transaction.atomic():
-        clubs = list(Club.objects.filter(
-            _search_filter("name", keyword) | _search_filter("slug", keyword)
-        ).order_by("id")[:10])
+        clubs = list(
+            Club.objects.filter(_search_filter("name", keyword) | _search_filter("slug", keyword)).order_by("id")[:10]
+        )
         cache.set(cache_key, clubs, timeout=settings.CACHE_TIMEOUT_MEDIUM)
         return clubs
 
@@ -552,7 +635,8 @@ def search_clubs(
     tags=["Brands"],
 )
 def search_brands(
-    request: HttpRequest, keyword: str = Query(..., description="Keyword to search for in brand names or slugs", example="adidas")
+    request: HttpRequest,
+    keyword: str = Query(..., description="Keyword to search for in brand names or slugs", example="adidas"),
 ) -> list[BrandJsonSchema]:
     """
     Search for brands using a keyword.
@@ -572,9 +656,7 @@ def search_brands(
     if cached_result is not None:
         return cached_result
 
-    brands = Brand.objects.filter(
-        _search_filter("name", keyword) | _search_filter("slug", keyword)
-    ).order_by("id")[:10]
+    brands = Brand.objects.filter(_search_filter("name", keyword) | _search_filter("slug", keyword)).order_by("id")[:10]
 
     result = [
         BrandJsonSchema(
@@ -684,19 +766,29 @@ AVAILABLE_DESIGNS = [
 ]
 
 # Pre-computed strings for Query descriptions (to avoid function calls in defaults)
-AVAILABLE_COLORS_STR = ', '.join(AVAILABLE_COLORS)
-AVAILABLE_DESIGNS_STR = ', '.join(AVAILABLE_DESIGNS)
+AVAILABLE_COLORS_STR = ", ".join(AVAILABLE_COLORS)
+AVAILABLE_DESIGNS_STR = ", ".join(AVAILABLE_DESIGNS)
 
 # Query objects for list_kits endpoint (to avoid function calls in argument defaults)
 _QUERY_CLUB = Query(None, description="Filter by club ID", example=1)
 _QUERY_SEASON = Query(None, description="Filter by season ID", example=1)
 _QUERY_COUNTRY = Query(None, description="Filter by club country (ISO 2-letter code)", example="ES")
-_QUERY_PRIMARY_COLOR = Query(None, description=f"Filter by primary color. Options: {AVAILABLE_COLORS_STR}", example="Red")
-_QUERY_SECONDARY_COLOR = Query(None, description=f"Filter by secondary color(s). Can specify multiple. Options: {AVAILABLE_COLORS_STR}", example=["White", "Blue"])
-_QUERY_DESIGN = Query(None, description=f"Filter by design pattern. Options: {AVAILABLE_DESIGNS_STR}", example="Stripes")
+_QUERY_PRIMARY_COLOR = Query(
+    None, description=f"Filter by primary color. Options: {AVAILABLE_COLORS_STR}", example="Red"
+)
+_QUERY_SECONDARY_COLOR = Query(
+    None,
+    description=f"Filter by secondary color(s). Can specify multiple. Options: {AVAILABLE_COLORS_STR}",
+    example=["White", "Blue"],
+)
+_QUERY_DESIGN = Query(
+    None, description=f"Filter by design pattern. Options: {AVAILABLE_DESIGNS_STR}", example="Stripes"
+)
 _QUERY_YEAR = Query(None, description="Filter by year (searches in first_year and second_year)", example=2024)
 _QUERY_FIRST_YEAR = Query(None, description="Filter by season first year", example=2024)
-_QUERY_SECOND_YEAR = Query(None, description="Filter by season second year (use with first_year for exact match)", example=2025)
+_QUERY_SECOND_YEAR = Query(
+    None, description="Filter by season second year (use with first_year for exact match)", example=2025
+)
 _QUERY_PAGE = Query(1, description="Page number", ge=1)
 _QUERY_PAGE_SIZE = Query(20, description="Items per page", ge=1, le=100)
 
@@ -788,24 +880,37 @@ def list_kits(
 
     cache_key = generate_cache_key(
         "kits",
-        "club", club,
-        "season", season,
-        "country", country,
-        "primary_color", primary_color,
-        "secondary_color", secondary_color,
-        "design", design,
-        "year", year,
-        "first_year", first_year,
-        "second_year", second_year,
-        "page", page,
-        "page_size", page_size,
+        "club",
+        club,
+        "season",
+        season,
+        "country",
+        country,
+        "primary_color",
+        primary_color,
+        "secondary_color",
+        secondary_color,
+        "design",
+        design,
+        "year",
+        year,
+        "first_year",
+        first_year,
+        "second_year",
+        second_year,
+        "page",
+        page,
+        "page_size",
+        page_size,
     )
     cached_result = cache.get(cache_key)
 
     if cached_result is not None:
         return cached_result
 
-    kits_query = Kit.objects.select_related("team", "season", "brand", "type", "primary_color").prefetch_related("secondary_color")
+    kits_query = Kit.objects.select_related("team", "season", "brand", "type", "primary_color").prefetch_related(
+        "secondary_color"
+    )
 
     if club:
         kits_query = kits_query.filter(team__id=club)
@@ -839,20 +944,16 @@ def list_kits(
     if design:
         design_normalized = design.strip()
         if design_normalized not in AVAILABLE_DESIGNS:
-            raise ValidationError(
-                f"Invalid design '{design}'. Available options: {', '.join(AVAILABLE_DESIGNS)}"
-            )
+            raise ValidationError(f"Invalid design '{design}'. Available options: {', '.join(AVAILABLE_DESIGNS)}")
         kits_query = kits_query.filter(design=design_normalized)
     if year:
-        kits_query = kits_query.filter(
-            Q(season__first_year=str(year)) | Q(season__second_year=str(year))
-        )
+        kits_query = kits_query.filter(Q(season__first_year=str(year)) | Q(season__second_year=str(year)))
     if first_year:
         kits_query = kits_query.filter(season__first_year=str(first_year))
     if second_year:
         kits_query = kits_query.filter(season__second_year=str(second_year))
 
-    kits_query = kits_query.order_by('-id')
+    kits_query = kits_query.order_by("-id")
     paginator = Paginator(kits_query, page_size)
     page_obj = paginator.get_page(page)
     kits = list(page_obj)
@@ -927,6 +1028,12 @@ def search_seasons(
     """
     Search for seasons by year.
 
+    Results are ordered by relevance:
+    1. Exact match (e.g., "2025" matches "2025")
+    2. Starts with keyword (e.g., "2025" matches "2025-26")
+    3. Ends with keyword or contains "-keyword" (e.g., "2025" matches "2024-25")
+    4. Contains keyword in middle (e.g., "2025" matches "2025-27")
+
     Args:
         request: The HTTP request
         keyword (str): Year or partial year to search for (e.g., "2025", "2025-", "2020-21")
@@ -956,12 +1063,10 @@ def search_seasons(
         year_prefix = keyword[:-1]
         if year_prefix.isdigit() and len(year_prefix) == 4:
             year_int = int(year_prefix)
-            year_short = str(year_int)[-2:]
-            prev_year = year_int - 1
-
-            year_query = Q(year__exact=f"{prev_year}-{year_short}") | Q(year__startswith=f"{year_int}-")
+            # Use first_year for simpler matching
+            year_query = Q(first_year=str(year_int)) | Q(year__startswith=f"{year_int}-")
         else:
-            year_query = Q(year__startswith=keyword)
+            year_query = Q(year__startswith=keyword) | Q(first_year__startswith=year_prefix)
     elif "-" in keyword:
         if keyword.count("-") == 1:
             parts = keyword.split("-")
@@ -974,23 +1079,47 @@ def search_seasons(
     elif keyword.isdigit():
         year_int = int(keyword)
         if len(keyword) == 4:
-            year_short = str(year_int)[-2:]
-            prev_year = year_int - 1
-            next_year = year_int + 1
-            next_year_short = str(next_year)[-2:]
-
+            # Use first_year and second_year for simpler and more accurate matching
             year_query = (
-                Q(year__exact=str(year_int))
-                | Q(year__startswith=f"{prev_year}-{year_short}")
-                | Q(year__startswith=f"{year_int}-{next_year_short}")
+                Q(year__exact=str(year_int))  # Exact match (single year format)
+                | Q(first_year=str(year_int))  # Starts with keyword (e.g., "2025-26")
+                | Q(second_year=str(year_int))  # Ends with keyword (e.g., "2024-25")
+                | Q(first_year__icontains=keyword)  # Contains in first_year
+                | Q(second_year__icontains=keyword)  # Contains in second_year
+            )
+        elif len(keyword) == 2:
+            # For 2-digit years (e.g., "97"), interpret as full year (e.g., "1997")
+            # Search for years ending with the 2 digits
+            year_query = (
+                Q(year__exact=keyword)  # Exact match (e.g., "97")
+                | Q(first_year__endswith=keyword)  # first_year ends with keyword (e.g., "1997")
+                | Q(second_year__endswith=keyword)  # second_year ends with keyword (e.g., "1997")
+                | Q(year__icontains=keyword)  # Contains in year field
+                | Q(first_year__icontains=keyword)  # Contains in first_year
+                | Q(second_year__icontains=keyword)  # Contains in second_year
             )
         else:
-            year_query = Q(year__icontains=keyword)
+            year_query = (
+                Q(year__icontains=keyword)
+                | Q(first_year__icontains=keyword)
+                | Q(second_year__icontains=keyword)
+            )
     else:
-        year_query = Q(year__icontains=keyword)
+        year_query = (
+            Q(year__icontains=keyword)
+            | Q(first_year__icontains=keyword)
+            | Q(second_year__icontains=keyword)
+        )
 
-    seasons = Season.objects.filter(year_query).order_by("-year")[:10]
-    result = list(seasons)
+    # Get more results to allow for reordering
+    seasons = Season.objects.filter(year_query).order_by("-year")[:20]
+    seasons_list = list(seasons)
+
+    # Reorder by priority using first_year and second_year
+    seasons_list.sort(key=lambda s: (_get_season_priority(s, keyword), s.year))
+
+    # Take top 10 after reordering
+    result = seasons_list[:10]
 
     cache.set(cache_key, result, timeout=settings.CACHE_TIMEOUT_MEDIUM)
 
@@ -1022,7 +1151,9 @@ def search_seasons(
     """,
     tags=["Kits"],
 )
-def search_kits(request: HttpRequest, keyword: str | None = Query(None, description="Search query", example="Málaga 2003")) -> list[KitSearchResult]:
+def search_kits(
+    request: HttpRequest, keyword: str | None = Query(None, description="Search query", example="Málaga 2003")
+) -> list[KitSearchResult]:
     from django.conf import settings
 
     search_query = keyword
@@ -1068,7 +1199,7 @@ def search_kits(request: HttpRequest, keyword: str | None = Query(None, descript
         terms = search_terms.split()
 
         # First try: simple icontains search (fastest)
-        simple_matches = base_kits.filter(_unaccent_filter("name", search_terms))[:20]
+        simple_matches = base_kits.filter(_unaccent_filter("name", search_terms))
 
         if simple_matches.exists():
             kits = simple_matches
@@ -1080,7 +1211,7 @@ def search_kits(request: HttpRequest, keyword: str | None = Query(None, descript
                     term_matches = term_matches.filter(_unaccent_filter("name", term))
 
             if term_matches.exists():
-                kits = term_matches[:20]
+                kits = term_matches
             else:
                 # Third try: individual terms with OR logic
                 or_query = Q()
@@ -1089,14 +1220,39 @@ def search_kits(request: HttpRequest, keyword: str | None = Query(None, descript
                         or_query |= _unaccent_filter("name", term)
 
                 if or_query:
-                    kits = base_kits.filter(or_query)[:20]
+                    kits = base_kits.filter(or_query)
                 else:
                     kits = base_kits.none()
     else:
         kits = base_kits
 
-    # Get top 10 results and convert to list to avoid lazy evaluation issues
-    kits_list = list(kits[:10])
+    # Order by Type_K category and priority for proper sorting
+    # Order: 1. Match kits (non-GK first, then GK), 2. Pre-match, 3. Pre-season, 4. Training, 5. Travel, 6. Jackets
+    kits = kits.select_related("type", "team").order_by(
+        "type__category_order",  # Category order (1=match, 2=prematch, etc.)
+        "type__is_goalkeeper",  # Non-GK first (False < True)
+        "type__order_priority",  # Priority within category (Home=1, Away=2, etc.)
+        "type__name",  # Alphabetical as final tiebreaker
+        "-id",  # Most recent first as final tiebreaker
+    )
+
+    # Get more results than needed to allow for reordering
+    kits_list = list(kits[:20])
+
+    # Separate primary teams from secondary teams (B, C, youth, women's, etc.)
+    primary_teams = []
+    secondary_teams = []
+
+    for kit in kits_list:
+        if _is_secondary_team(kit.team.name):
+            secondary_teams.append(kit)
+        else:
+            primary_teams.append(kit)
+
+    # Combine: primary teams first, then secondary teams
+    # Take top 10 from the combined list
+    sorted_kits = primary_teams + secondary_teams
+    kits_list = sorted_kits[:10]
 
     # Format results
     results = []
@@ -1126,7 +1282,7 @@ def search_kits(request: HttpRequest, keyword: str | None = Query(None, descript
     - Complete team information (ID, name, slug, logos)
     - Full season information (ID, year, first_year, second_year)
     - Detailed competition information (ID, name, slug, logos)
-    - Kit type details (ID, name)
+    - Kit type details (ID, name, category, category_order, order_priority, is_goalkeeper)
     - Complete brand information (ID, name, slug, logos)
     - Design information
     - Color information (primary and secondary colors)
@@ -1157,9 +1313,14 @@ def get_kit(request: HttpRequest, kit_id: int = Path(..., description="Kit ID", 
         return cached_result
 
     try:
-        kit = get_object_or_404(Kit.objects.select_related("team", "season", "brand", "type", "primary_color").prefetch_related("competition", "secondary_color"), id=kit_id)
+        kit = get_object_or_404(
+            Kit.objects.select_related("team", "season", "brand", "type", "primary_color").prefetch_related(
+                "competition", "secondary_color"
+            ),
+            id=kit_id,
+        )
     except Exception as e:
-        if 'not found' in str(e).lower() or 'does not exist' in str(e).lower():
+        if "not found" in str(e).lower() or "does not exist" in str(e).lower():
             raise KitNotFoundError(f"kit-{kit_id}", f"Kit with ID {kit_id} not found") from e
         raise
     competition_logo_default = "https://www.footballkitarchive.com/static/logos/not_found.png"
@@ -1208,7 +1369,14 @@ def get_kit(request: HttpRequest, kit_id: int = Path(..., description="Kit ID", 
             )
             for c in kit.competition.all()
         ],
-        type=TypeJsonSchema(id=kit.type.id, name=kit.type.name),
+        type=TypeJsonSchema(
+            id=kit.type.id,
+            name=kit.type.name,
+            category=kit.type.category,
+            category_order=kit.type.category_order,
+            order_priority=kit.type.order_priority,
+            is_goalkeeper=kit.type.is_goalkeeper,
+        ),
         brand=BrandJsonSchema(
             id=kit.brand.id,
             name=kit.brand.name,
@@ -1238,9 +1406,13 @@ def get_kit(request: HttpRequest, kit_id: int = Path(..., description="Kit ID", 
     tags=["Kits"],
     deprecated=True,
 )
-def get_kit_json_legacy(request: HttpRequest, kit_id: int = Path(..., description="Kit ID", example=1)) -> KitJsonSchema:
+def get_kit_json_legacy(
+    request: HttpRequest, kit_id: int = Path(..., description="Kit ID", example=1)
+) -> KitJsonSchema:
     """Legacy endpoint - redirects to get_kit."""
     return get_kit(request, kit_id)
+
+
 @api.get(
     "/random-kits/",
     summary="Get Random Kits",
@@ -1287,14 +1459,23 @@ def get_kit_json_legacy(request: HttpRequest, kit_id: int = Path(..., descriptio
     """,
     tags=["Kits"],
 )
-def get_random_kits(request: HttpRequest, page: int = Query(1, description="Page number", ge=1), page_size: int = Query(20, description="Items per page", ge=1, le=100)) -> dict[str, Any]:
+def get_random_kits(
+    request: HttpRequest,
+    page: int = Query(1, description="Page number", ge=1),
+    page_size: int = Query(20, description="Items per page", ge=1, le=100),
+) -> dict[str, Any]:
     """
     Get random kits with pagination.
     """
     from django.core.paginator import Paginator
 
     # Get random kits that have main images
-    kits = Kit.objects.filter(main_img_url__isnull=False, main_img_url__gt="").select_related("team", "season", "type", "brand", "primary_color").prefetch_related("secondary_color").order_by("?")
+    kits = (
+        Kit.objects.filter(main_img_url__isnull=False, main_img_url__gt="")
+        .select_related("team", "season", "type", "brand", "primary_color")
+        .prefetch_related("secondary_color")
+        .order_by("?")
+    )
 
     # Paginate results
     paginator = Paginator(kits, page_size)
@@ -1382,7 +1563,11 @@ def get_random_kits(request: HttpRequest, page: int = Query(1, description="Page
     """,
     tags=["Clubs"],
 )
-def get_random_clubs(request: HttpRequest, page: int = Query(1, description="Page number", ge=1), page_size: int = Query(20, description="Items per page", ge=1, le=100)) -> dict[str, Any]:
+def get_random_clubs(
+    request: HttpRequest,
+    page: int = Query(1, description="Page number", ge=1),
+    page_size: int = Query(20, description="Items per page", ge=1, le=100),
+) -> dict[str, Any]:
     """
     Get random clubs with pagination.
     """
@@ -1443,5 +1628,3 @@ def get_random_clubs(request: HttpRequest, page: int = Query(1, description="Pag
             },
             "error": str(e),
         }
-
-

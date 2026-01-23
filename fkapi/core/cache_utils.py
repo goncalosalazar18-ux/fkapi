@@ -167,6 +167,7 @@ def setup_cache_invalidation() -> None:
     """
     Set up signal handlers for automatic cache invalidation on model changes.
     """
+
     def invalidate_on_save(sender, instance, **kwargs):
         """Invalidate cache when a model instance is saved."""
         if isinstance(instance, Club):

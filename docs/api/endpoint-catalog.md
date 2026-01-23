@@ -253,11 +253,102 @@ Get random clubs with pagination.
 }
 ```
 
+### Get Kit Details
+
+**GET** `/api/kits/{kit_id}`
+
+Get detailed information for a specific kit.
+
+**Path Parameters:**
+- `kit_id` (required): Kit ID
+
+**Response:** `KitJsonSchema` object with complete kit information
+
+**Example:**
+```
+GET /api/kits/1
+```
+
+**Response:**
+```json
+{
+  "name": "Home Kit 2024-25",
+  "slug": "manchester-united-2024-25-home-kit",
+  "team": {
+    "id": 1,
+    "name": "Manchester United",
+    "slug": "manchester-united",
+    "logo": "https://...",
+    "logo_dark": "https://...",
+    "country": "GB"
+  },
+  "season": {
+    "id": 1,
+    "year": "2024-25",
+    "first_year": "2024",
+    "second_year": "2025"
+  },
+  "competition": [
+    {
+      "id": 1,
+      "name": "Premier League",
+      "slug": "premier-league-kits",
+      "logo": "https://...",
+      "logo_dark": "https://...",
+      "country": "GB"
+    }
+  ],
+  "type": {
+    "id": 1,
+    "name": "Home",
+    "category": "match",
+    "category_order": 1,
+    "order_priority": 1,
+    "is_goalkeeper": false
+  },
+  "brand": {
+    "id": 1,
+    "name": "Adidas",
+    "slug": "adidas-kits",
+    "logo": "https://...",
+    "logo_dark": "https://..."
+  },
+  "design": "Stripes",
+  "primary_color": {
+    "name": "Red",
+    "color": "#FF0000"
+  },
+  "secondary_color": [
+    {
+      "name": "White",
+      "color": "#FFFFFF"
+    }
+  ],
+  "main_img_url": "https://..."
+}
+```
+
+**Type_K Fields:**
+- `id`: Unique identifier for the kit type
+- `name`: Name of the kit type (e.g., "Home", "Away", "Training")
+- `category`: Category of the kit type:
+  - `match`: Game kits (default)
+  - `prematch`: Pre-match, bench, warm-up, staff
+  - `preseason`: Pre-season, temporary
+  - `training`: Training kits
+  - `travel`: Travel/Polo kits
+  - `jacket`: Jackets (Anthem, Rain, Jacket, Windbreaker, Track, Vest)
+- `category_order`: Order of category for sorting (1-6, lower = higher priority)
+- `order_priority`: Priority within category for sorting (lower = higher priority)
+- `is_goalkeeper`: Boolean indicating if this is a goalkeeper kit type
+
+**Note:** When new kit types are created during scraping, they are automatically categorized based on their name.
+
 ### Get Kit (Legacy)
 
 **GET** `/api/kit/{kit_id}`
 
-Legacy endpoint for getting kit information. Returns JSON response.
+Legacy endpoint for getting kit information. Returns JSON response. Redirects to `/api/kits/{kit_id}`.
 
 **Path Parameters:**
 - `kit_id` (required): Kit ID

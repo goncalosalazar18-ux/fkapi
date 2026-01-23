@@ -73,20 +73,14 @@ class Command(BaseCommand):
         if cache_search:
             cached_items += self._cache_popular_searches()
 
-        self.stdout.write(
-            self.style.SUCCESS(f"Cache warming completed. Cached {cached_items} items.")
-        )
+        self.stdout.write(self.style.SUCCESS(f"Cache warming completed. Cached {cached_items} items."))
 
     def _cache_club_seasons(self, limit: int) -> int:
         """Cache seasons for top clubs."""
         self.stdout.write("Caching club seasons...")
         cached = 0
 
-        top_clubs = (
-            Club.objects.annotate(kit_count=Count("kit"))
-            .filter(kit_count__gt=0)
-            .order_by("-kit_count")[:limit]
-        )
+        top_clubs = Club.objects.annotate(kit_count=Count("kit")).filter(kit_count__gt=0).order_by("-kit_count")[:limit]
 
         for club in top_clubs:
             cache_key = generate_cache_key("season", "club", club.id)
@@ -123,7 +117,11 @@ class Command(BaseCommand):
                         TypeJsonSchema,
                     )
 
-                    kit = Kit.objects.select_related("team", "season", "brand", "type", "primary_color").prefetch_related("competition", "secondary_color").get(id=kit.id)
+                    kit = (
+                        Kit.objects.select_related("team", "season", "brand", "type", "primary_color")
+                        .prefetch_related("competition", "secondary_color")
+                        .get(id=kit.id)
+                    )
                     competition_logo_default = "https://www.footballkitarchive.com/static/logos/not_found.png"
 
                     primary_color = None
@@ -132,7 +130,9 @@ class Command(BaseCommand):
 
                     secondary_colors = []
                     if kit.secondary_color.exists():
-                        secondary_colors = [ColorJsonSchema(name=color.name, color=color.color) for color in kit.secondary_color.all()]
+                        secondary_colors = [
+                            ColorJsonSchema(name=color.name, color=color.color) for color in kit.secondary_color.all()
+                        ]
 
                     country_code = None
                     if hasattr(kit.team, "country") and kit.team.country:
@@ -193,11 +193,7 @@ class Command(BaseCommand):
         self.stdout.write("Caching top clubs...")
         cached = 0
 
-        top_clubs = (
-            Club.objects.annotate(kit_count=Count("kit"))
-            .filter(kit_count__gt=0)
-            .order_by("-kit_count")[:limit]
-        )
+        top_clubs = Club.objects.annotate(kit_count=Count("kit")).filter(kit_count__gt=0).order_by("-kit_count")[:limit]
 
         for club in top_clubs:
             cache_key = generate_cache_key("club", "top", club.id)
@@ -221,11 +217,7 @@ class Command(BaseCommand):
         self.stdout.write("Caching top brands...")
         cached = 0
 
-        top_brands = (
-            Brand.objects.annotate(kit_count=Count("kit"))
-            .filter(kit_count__gt=0)
-            .order_by("-kit_count")[:20]
-        )
+        top_brands = Brand.objects.annotate(kit_count=Count("kit")).filter(kit_count__gt=0).order_by("-kit_count")[:20]
 
         for brand in top_brands:
             cache_key = generate_cache_key("brand", "top", brand.id)
@@ -274,13 +266,14 @@ class Command(BaseCommand):
             try:
                 cache_key = generate_cache_key("search_clubs", search_term.lower())
                 if cache.get(cache_key) is None:
-
                     from core.models import Club
                     from fkapi.api import _search_filter
 
-                    clubs = list(Club.objects.filter(
-                        _search_filter("name", search_term.lower()) | _search_filter("slug", search_term.lower())
-                    ).order_by("id")[:10])
+                    clubs = list(
+                        Club.objects.filter(
+                            _search_filter("name", search_term.lower()) | _search_filter("slug", search_term.lower())
+                        ).order_by("id")[:10]
+                    )
                     if clubs:
                         cache.set(cache_key, clubs, timeout=settings.CACHE_TIMEOUT_MEDIUM)
                         cached += 1
