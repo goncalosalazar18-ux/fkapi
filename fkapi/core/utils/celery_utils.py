@@ -22,6 +22,7 @@ def is_celery_available() -> bool:
 
     try:
         import celery  # noqa: F401
+
         _CELERY_AVAILABLE = True
         return True
     except ImportError:
@@ -47,12 +48,14 @@ def is_celery_active() -> bool:
 
     try:
         from django.conf import settings
-        enable_celery = getattr(settings, 'ENABLE_CELERY', False)
+
+        enable_celery = getattr(settings, "ENABLE_CELERY", False)
         if not enable_celery:
             _CELERY_ACTIVE = False
             return False
 
         from fkapi.celery import app
+
         _ = app.main
         _CELERY_ACTIVE = True
         return True
@@ -82,6 +85,7 @@ def execute_task_async(task_func: Callable, *args, **kwargs) -> Any:
             logger.warning(f"Celery task failed, falling back to threading: {e}")
 
     import threading
+
     thread = threading.Thread(target=task_func, args=args, kwargs=kwargs, daemon=True)
     thread.start()
     logger.info("Task executed in thread (Celery not available)")

@@ -3,7 +3,7 @@ import os
 import sys
 
 # Set Django settings module before any Django imports
-os.environ['DJANGO_SETTINGS_MODULE'] = 'test_settings'
+os.environ["DJANGO_SETTINGS_MODULE"] = "test_settings"
 
 # Get the fkapi directory (where this conftest.py is located)
 fkapi_dir = os.path.dirname(os.path.abspath(__file__))

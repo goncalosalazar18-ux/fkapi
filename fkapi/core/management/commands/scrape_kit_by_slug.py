@@ -5,27 +5,23 @@ from core.scrapers import scrape_kit
 
 
 class Command(BaseCommand):
-    help = 'Scrape a specific kit by its slug'
+    help = "Scrape a specific kit by its slug"
 
     def add_arguments(self, parser):
-        parser.add_argument('slug', type=str, help='Slug of the kit to scrape')
+        parser.add_argument("slug", type=str, help="Slug of the kit to scrape")
         parser.add_argument(
-            '--force',
-            action='store_true',
-            help='Force rescraping even if the kit already exists and use proxy'
+            "--force", action="store_true", help="Force rescraping even if the kit already exists and use proxy"
         )
 
     def handle(self, *args, **options):
-        slug = options['slug']
-        use_proxy = options['force']
+        slug = options["slug"]
+        use_proxy = options["force"]
 
         self.stdout.write(f"Starting scrape for slug: {slug}")
 
         # Check if the kit already exists
         if Kit.objects.filter(slug=slug).exists() and not use_proxy:
-            self.stdout.write(self.style.WARNING(
-                f"Kit with slug {slug} already exists. Use --force to update it."
-            ))
+            self.stdout.write(self.style.WARNING(f"Kit with slug {slug} already exists. Use --force to update it."))
             return
 
         try:

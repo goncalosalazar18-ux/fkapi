@@ -1,4 +1,3 @@
-
 from ninja import Schema
 
 
@@ -7,7 +6,7 @@ class ClubSerializer(Schema):
     name: str
     slug: str
     logo: str
-    #logo_dark: str = None
+    # logo_dark: str = None
 
     def __init__(self, instance=None):
         super().__init__(instance)
@@ -35,11 +34,13 @@ class ClubJsonSchema(Schema):
     logo_dark: str | None = None
     country: str | None = None
 
+
 class SeasonJsonSchema(Schema):
     id: int | None = None
     year: str
     first_year: str
     second_year: str | None = None
+
 
 class CompetitionJsonSchema(Schema):
     id: int | None = None
@@ -51,7 +52,13 @@ class CompetitionJsonSchema(Schema):
 
 
 class TypeJsonSchema(Schema):
+    id: int
     name: str
+    category: str
+    category_order: int
+    order_priority: int
+    is_goalkeeper: bool
+
 
 class BrandJsonSchema(Schema):
     id: int | None = None
@@ -60,9 +67,11 @@ class BrandJsonSchema(Schema):
     logo: str | None = None
     logo_dark: str | None = None
 
+
 class ColorJsonSchema(Schema):
     name: str
     color: str
+
 
 class KitJsonSchema(Schema):
     name: str

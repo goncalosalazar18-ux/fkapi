@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 # Constants for validation
 MIN_YEAR = 1800
 MAX_YEAR = 2100
+
+
 # Maximum years between first_year and second_year
 # For modern seasons (after 1960), max span is 2 years
 # For older seasons (before 1960), allow larger spans (up to 20 years)
@@ -48,68 +50,82 @@ class SeasonsService:
             # Validate first_year
             first_year_valid, first_year_int = SeasonsService._validate_year(season.first_year)
             if not first_year_valid:
-                problems["invalid_first_year"].append({
-                    "season": season,
-                    "issue": f"first_year '{season.first_year}' is not a valid year",
-                    "kit_count": season.kit_set.count(),
-                })
+                problems["invalid_first_year"].append(
+                    {
+                        "season": season,
+                        "issue": f"first_year '{season.first_year}' is not a valid year",
+                        "kit_count": season.kit_set.count(),
+                    }
+                )
                 continue
 
             # Check if first_year is out of reasonable range
             if first_year_int < MIN_YEAR or first_year_int > MAX_YEAR:
-                problems["out_of_range"].append({
-                    "season": season,
-                    "issue": f"first_year '{season.first_year}' is out of range ({MIN_YEAR}-{MAX_YEAR})",
-                    "kit_count": season.kit_set.count(),
-                })
+                problems["out_of_range"].append(
+                    {
+                        "season": season,
+                        "issue": f"first_year '{season.first_year}' is out of range ({MIN_YEAR}-{MAX_YEAR})",
+                        "kit_count": season.kit_set.count(),
+                    }
+                )
 
             # Validate second_year if present
             if season.second_year:
                 second_year_valid, second_year_int = SeasonsService._validate_year(season.second_year)
                 if not second_year_valid:
-                    problems["invalid_second_year"].append({
-                        "season": season,
-                        "issue": f"second_year '{season.second_year}' is not a valid year",
-                        "kit_count": season.kit_set.count(),
-                    })
+                    problems["invalid_second_year"].append(
+                        {
+                            "season": season,
+                            "issue": f"second_year '{season.second_year}' is not a valid year",
+                            "kit_count": season.kit_set.count(),
+                        }
+                    )
                     continue
 
                 # Check if second_year is out of reasonable range
                 if second_year_int < MIN_YEAR or second_year_int > MAX_YEAR:
-                    problems["out_of_range"].append({
-                        "season": season,
-                        "issue": f"second_year '{season.second_year}' is out of range ({MIN_YEAR}-{MAX_YEAR})",
-                        "kit_count": season.kit_set.count(),
-                    })
+                    problems["out_of_range"].append(
+                        {
+                            "season": season,
+                            "issue": f"second_year '{season.second_year}' is out of range ({MIN_YEAR}-{MAX_YEAR})",
+                            "kit_count": season.kit_set.count(),
+                        }
+                    )
 
                 # Check if second_year is before first_year
                 if second_year_int < first_year_int:
-                    problems["second_year_before_first"].append({
-                        "season": season,
-                        "issue": f"second_year '{season.second_year}' ({second_year_int}) is before first_year '{season.first_year}' ({first_year_int})",
-                        "year_span": first_year_int - second_year_int,
-                        "kit_count": season.kit_set.count(),
-                    })
+                    problems["second_year_before_first"].append(
+                        {
+                            "season": season,
+                            "issue": f"second_year '{season.second_year}' ({second_year_int}) is before first_year '{season.first_year}' ({first_year_int})",
+                            "year_span": first_year_int - second_year_int,
+                            "kit_count": season.kit_set.count(),
+                        }
+                    )
 
                 # Check if year span is excessive
                 year_span = second_year_int - first_year_int
                 max_span = get_max_season_span(first_year_int)
                 if year_span > max_span:
-                    problems["excessive_year_span"].append({
-                        "season": season,
-                        "issue": f"Year span is {year_span} years (max allowed: {max_span})",
-                        "year_span": year_span,
-                        "kit_count": season.kit_set.count(),
-                    })
+                    problems["excessive_year_span"].append(
+                        {
+                            "season": season,
+                            "issue": f"Year span is {year_span} years (max allowed: {max_span})",
+                            "year_span": year_span,
+                            "kit_count": season.kit_set.count(),
+                        }
+                    )
 
             # Check if year format matches first_year/second_year
             year_format_issue = SeasonsService._check_year_format_consistency(season)
             if year_format_issue:
-                problems["year_format_mismatch"].append({
-                    "season": season,
-                    "issue": year_format_issue,
-                    "kit_count": season.kit_set.count(),
-                })
+                problems["year_format_mismatch"].append(
+                    {
+                        "season": season,
+                        "issue": year_format_issue,
+                        "kit_count": season.kit_set.count(),
+                    }
+                )
 
         return problems
 
@@ -128,7 +144,7 @@ class SeasonsService:
             return False, None
 
         # Check if it's a 4-digit number
-        if not re.match(r'^\d{4}$', year_str.strip()):
+        if not re.match(r"^\d{4}$", year_str.strip()):
             return False, None
 
         try:
@@ -172,7 +188,9 @@ class SeasonsService:
             if "-" in year:
                 parts = year.split("-")
                 if len(parts) == 2:
-                    return f"year '{year}' format doesn't match first_year '{first_year}' and second_year '{second_year}'"
+                    return (
+                        f"year '{year}' format doesn't match first_year '{first_year}' and second_year '{second_year}'"
+                    )
             return f"year '{year}' format doesn't match two-year format with first_year '{first_year}' and second_year '{second_year}'"
 
         return None
@@ -190,7 +208,7 @@ class SeasonsService:
         seasons_single_year = total_seasons - seasons_with_second_year
 
         # Get year range
-        seasons_with_valid_first = Season.objects.filter(first_year__regex=r'^\d{4}$')
+        seasons_with_valid_first = Season.objects.filter(first_year__regex=r"^\d{4}$")
         if seasons_with_valid_first.exists():
             first_years = [int(s.first_year) for s in seasons_with_valid_first if s.first_year.isdigit()]
             if first_years:

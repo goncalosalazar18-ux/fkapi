@@ -87,6 +87,26 @@ class APITests(TestCase):
         self.assertIn("name", data)
         self.assertIn("team", data)
         self.assertIn("season", data)
+        self.assertIn("type", data)
+
+        # Verify Type_K fields are included
+        type_data = data["type"]
+        self.assertIn("id", type_data)
+        self.assertIn("name", type_data)
+        self.assertIn("category", type_data)
+        self.assertIn("category_order", type_data)
+        self.assertIn("order_priority", type_data)
+        self.assertIn("is_goalkeeper", type_data)
+
+        # Verify values match the model (refresh to get latest values)
+        self.type_k.refresh_from_db()
+        # Verify all required fields are present and match model
+        self.assertIsInstance(type_data["id"], int)
+        self.assertEqual(type_data["name"], self.type_k.name)
+        self.assertEqual(type_data["category"], self.type_k.category)
+        self.assertEqual(type_data["category_order"], self.type_k.category_order)
+        self.assertEqual(type_data["order_priority"], self.type_k.order_priority)
+        self.assertEqual(type_data["is_goalkeeper"], self.type_k.is_goalkeeper)
 
     def test_get_random_kits(self):
         """Test random kits endpoint with pagination."""

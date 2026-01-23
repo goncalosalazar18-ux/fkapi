@@ -30,15 +30,15 @@ class TestFactTableParser(TestCase):
         </table>
         </body></html>
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
         fact_table = extract_fact_table(soup)
 
-        self.assertEqual(fact_table.get_text('team'), 'Arsenal')
-        self.assertEqual(fact_table.get_text('Season'), '2024-25')
-        self.assertEqual(fact_table.get_text('kit type'), 'Home')
-        self.assertEqual(fact_table.get_text('Design'), 'Striped')
-        self.assertEqual(fact_table.get_text('Brand'), 'adidas')
-        self.assertEqual(fact_table.get_text('League'), 'Premier League')
+        self.assertEqual(fact_table.get_text("team"), "Arsenal")
+        self.assertEqual(fact_table.get_text("Season"), "2024-25")
+        self.assertEqual(fact_table.get_text("kit type"), "Home")
+        self.assertEqual(fact_table.get_text("Design"), "Striped")
+        self.assertEqual(fact_table.get_text("Brand"), "adidas")
+        self.assertEqual(fact_table.get_text("League"), "Premier League")
 
     def test_extract_fact_table_case_insensitive(self):
         """Test that fact table extraction is case insensitive."""
@@ -51,11 +51,11 @@ class TestFactTableParser(TestCase):
             </tbody>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
         fact_table = extract_fact_table(soup)
 
-        self.assertEqual(fact_table.get_text('team'), 'Manchester United')
-        self.assertEqual(fact_table.get_text('season'), '2023-24')
+        self.assertEqual(fact_table.get_text("team"), "Manchester United")
+        self.assertEqual(fact_table.get_text("season"), "2023-24")
 
     def test_extract_fact_table_special_characters(self):
         """Test extracting facts with special characters in text."""
@@ -67,11 +67,11 @@ class TestFactTableParser(TestCase):
             </tbody>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
         fact_table = extract_fact_table(soup)
 
-        self.assertEqual(fact_table.get_text('team'), 'FC București')
-        self.assertEqual(fact_table.get_text('colors'), 'Dark Red / Light Blue')
+        self.assertEqual(fact_table.get_text("team"), "FC București")
+        self.assertEqual(fact_table.get_text("colors"), "Dark Red / Light Blue")
 
     def test_extract_fact_table_missing_fields(self):
         """Test extracting facts with missing optional fields."""
@@ -83,13 +83,13 @@ class TestFactTableParser(TestCase):
             </tbody>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
         fact_table = extract_fact_table(soup)
 
-        self.assertEqual(fact_table.get_text('team'), 'Arsenal')
-        self.assertEqual(fact_table.get_text('season'), '2024-25')
+        self.assertEqual(fact_table.get_text("team"), "Arsenal")
+        self.assertEqual(fact_table.get_text("season"), "2024-25")
         # Missing fields should return None
-        self.assertIsNone(fact_table.get_text('brand'))
+        self.assertIsNone(fact_table.get_text("brand"))
 
     def test_extract_fact_table_no_table(self):
         """Test handling HTML without a fact table."""
@@ -98,7 +98,7 @@ class TestFactTableParser(TestCase):
             <div>No fact table here</div>
         </body></html>
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
         with self.assertRaises(ValueError):
             extract_fact_table(soup)
 
@@ -115,10 +115,10 @@ class TestColorExtraction(TestCase):
             </tbody>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
         fact_table = extract_fact_table(soup)
 
-        self.assertEqual(fact_table.get_text('colors'), 'Red')
+        self.assertEqual(fact_table.get_text("colors"), "Red")
 
     def test_extract_multiple_colors(self):
         """Test extracting multiple colors."""
@@ -129,13 +129,13 @@ class TestColorExtraction(TestCase):
             </tbody>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
         fact_table = extract_fact_table(soup)
 
-        colors = fact_table.get_text('colors')
-        self.assertIn('Red', colors)
-        self.assertIn('White', colors)
-        self.assertIn('Black', colors)
+        colors = fact_table.get_text("colors")
+        self.assertIn("Red", colors)
+        self.assertIn("White", colors)
+        self.assertIn("Black", colors)
 
     def test_extract_colors_with_various_separators(self):
         """Test extracting colors with different separators."""
@@ -146,13 +146,13 @@ class TestColorExtraction(TestCase):
             </tbody>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
         fact_table = extract_fact_table(soup)
 
-        colors = fact_table.get_text('colors')
-        self.assertIn('Red', colors)
-        self.assertIn('White', colors)
-        self.assertIn('Black', colors)
+        colors = fact_table.get_text("colors")
+        self.assertIn("Red", colors)
+        self.assertIn("White", colors)
+        self.assertIn("Black", colors)
 
 
 class TestSeasonParsing(TestCase):
@@ -167,10 +167,10 @@ class TestSeasonParsing(TestCase):
             </tbody>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
         fact_table = extract_fact_table(soup)
 
-        self.assertEqual(fact_table.get_text('season'), '2024-25')
+        self.assertEqual(fact_table.get_text("season"), "2024-25")
 
     def test_season_single_year_format(self):
         """Test parsing single year season format."""
@@ -181,10 +181,10 @@ class TestSeasonParsing(TestCase):
             </tbody>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
         fact_table = extract_fact_table(soup)
 
-        self.assertEqual(fact_table.get_text('season'), '2024')
+        self.assertEqual(fact_table.get_text("season"), "2024")
 
     def test_season_with_special_characters(self):
         """Test parsing season with special characters."""
@@ -195,11 +195,11 @@ class TestSeasonParsing(TestCase):
             </tbody>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
         fact_table = extract_fact_table(soup)
 
-        season = fact_table.get_text('season')
-        self.assertEqual(season, '2024/25')
+        season = fact_table.get_text("season")
+        self.assertEqual(season, "2024/25")
 
 
 class TestRatingExtraction(TestCase):
@@ -214,10 +214,10 @@ class TestRatingExtraction(TestCase):
             </tbody>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
         fact_table = extract_fact_table(soup)
 
-        self.assertEqual(fact_table.get_text('rating'), '4.5')
+        self.assertEqual(fact_table.get_text("rating"), "4.5")
 
     def test_extract_rating_plain_text(self):
         """Test extracting rating from plain text."""
@@ -228,10 +228,10 @@ class TestRatingExtraction(TestCase):
             </tbody>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
         fact_table = extract_fact_table(soup)
 
-        self.assertEqual(fact_table.get_text('rating'), '4.75')
+        self.assertEqual(fact_table.get_text("rating"), "4.75")
 
     def test_extract_rating_decimal_precision(self):
         """Test extracting rating with decimal precision."""
@@ -242,10 +242,10 @@ class TestRatingExtraction(TestCase):
             </tbody>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
         fact_table = extract_fact_table(soup)
 
-        self.assertEqual(fact_table.get_text('rating'), '4.33')
+        self.assertEqual(fact_table.get_text("rating"), "4.33")
 
 
 class TestCompetitionExtraction(TestCase):
@@ -260,10 +260,10 @@ class TestCompetitionExtraction(TestCase):
             </tbody>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
         fact_table = extract_fact_table(soup)
 
-        self.assertEqual(fact_table.get_text('league'), 'Premier League')
+        self.assertEqual(fact_table.get_text("league"), "Premier League")
 
     def test_extract_multiple_competitions(self):
         """Test handling kits with multiple competitions."""
@@ -275,11 +275,11 @@ class TestCompetitionExtraction(TestCase):
             </tbody>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
         fact_table = extract_fact_table(soup)
 
-        self.assertEqual(fact_table.get_text('league'), 'Premier League')
-        self.assertEqual(fact_table.get_text('european competition'), 'Champions League')
+        self.assertEqual(fact_table.get_text("league"), "Premier League")
+        self.assertEqual(fact_table.get_text("european competition"), "Champions League")
 
 
 class TestParseKitPage(TestCase):
@@ -304,17 +304,17 @@ class TestParseKitPage(TestCase):
         </table>
         </body></html>
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
         data = parse_kit_page(soup)
 
-        self.assertEqual(data.team_name, 'Arsenal')
-        self.assertEqual(data.team_slug, 'arsenal-kits')
-        self.assertEqual(data.season_text, '2024-25')
+        self.assertEqual(data.team_name, "Arsenal")
+        self.assertEqual(data.team_slug, "arsenal-kits")
+        self.assertEqual(data.season_text, "2024-25")
         self.assertEqual(data.rating, 4.5)
-        self.assertEqual(data.main_img_url, 'https://example.com/kit.jpg')
-        self.assertEqual(data.kit_type, 'Home')
-        self.assertEqual(data.brand_name, 'adidas')
-        self.assertEqual(data.brand_slug, 'adidas-kits')
-        self.assertEqual(data.design, 'Striped')
-        self.assertEqual(data.colors_str, 'Red / White')
-        self.assertIn('Premier League', data.competitions_html)
+        self.assertEqual(data.main_img_url, "https://example.com/kit.jpg")
+        self.assertEqual(data.kit_type, "Home")
+        self.assertEqual(data.brand_name, "adidas")
+        self.assertEqual(data.brand_slug, "adidas-kits")
+        self.assertEqual(data.design, "Striped")
+        self.assertEqual(data.colors_str, "Red / White")
+        self.assertIn("Premier League", data.competitions_html)

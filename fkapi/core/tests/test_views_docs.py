@@ -36,4 +36,3 @@ class DocsViewsTests(TestCase):
         """Docs under excluded directories (like tmp) should 404."""
         with self.assertRaises(Http404):
             docs_view(None, "tmp/AGENT_PROMPT_TEMPLATE")
-
