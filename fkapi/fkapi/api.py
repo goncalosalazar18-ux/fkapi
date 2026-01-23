@@ -53,6 +53,35 @@ class KitSearchResult(Schema):
 # Enable API key authentication if configured
 _api_auth = APIKeyAuth() if os.getenv("DJANGO_API_ENABLE_AUTH", "False").lower() in ("1", "true", "yes") else None
 
+
+def _get_season_priority(season: Season, keyword: str) -> int:
+    """
+    Calculate priority for season ordering in search results.
+
+    Priority order:
+    1. Exact match (e.g., "2025" matches "2025")
+    2. Starts with keyword (e.g., "2025" matches "2025-26" via first_year)
+    3. Ends with keyword (e.g., "2025" matches "2024-25" via second_year)
+    4. Contains keyword (e.g., "2025" matches "2025-27" via first_year or second_year)
+
+    Args:
+        season: The Season object
+        keyword: The search keyword (e.g., "2025")
+
+    Returns:
+        Priority value (lower = higher priority)
+    """
+    if season.year == keyword:
+        return 1  # Exact match - highest priority
+    if season.first_year == keyword:
+        return 2  # Starts with keyword (first_year matches)
+    if season.second_year and season.second_year == keyword:
+        return 3  # Ends with keyword (second_year matches)
+    if keyword in season.first_year or (season.second_year and keyword in season.second_year):
+        return 4  # Contains keyword in first_year or second_year
+    return 5  # Fallback (shouldn't happen if query is correct)
+
+
 api = NinjaAPI(
     title="Football Kit Archive API",
     description="""
@@ -987,6 +1016,12 @@ def search_seasons(
     """
     Search for seasons by year.
 
+    Results are ordered by relevance:
+    1. Exact match (e.g., "2025" matches "2025")
+    2. Starts with keyword (e.g., "2025" matches "2025-26")
+    3. Ends with keyword or contains "-keyword" (e.g., "2025" matches "2024-25")
+    4. Contains keyword in middle (e.g., "2025" matches "2025-27")
+
     Args:
         request: The HTTP request
         keyword (str): Year or partial year to search for (e.g., "2025", "2025-", "2020-21")
@@ -1016,12 +1051,10 @@ def search_seasons(
         year_prefix = keyword[:-1]
         if year_prefix.isdigit() and len(year_prefix) == 4:
             year_int = int(year_prefix)
-            year_short = str(year_int)[-2:]
-            prev_year = year_int - 1
-
-            year_query = Q(year__exact=f"{prev_year}-{year_short}") | Q(year__startswith=f"{year_int}-")
+            # Use first_year for simpler matching
+            year_query = Q(first_year=str(year_int)) | Q(year__startswith=f"{year_int}-")
         else:
-            year_query = Q(year__startswith=keyword)
+            year_query = Q(year__startswith=keyword) | Q(first_year__startswith=year_prefix)
     elif "-" in keyword:
         if keyword.count("-") == 1:
             parts = keyword.split("-")
@@ -1034,23 +1067,36 @@ def search_seasons(
     elif keyword.isdigit():
         year_int = int(keyword)
         if len(keyword) == 4:
-            year_short = str(year_int)[-2:]
-            prev_year = year_int - 1
-            next_year = year_int + 1
-            next_year_short = str(next_year)[-2:]
-
+            # Use first_year and second_year for simpler and more accurate matching
             year_query = (
-                Q(year__exact=str(year_int))
-                | Q(year__startswith=f"{prev_year}-{year_short}")
-                | Q(year__startswith=f"{year_int}-{next_year_short}")
+                Q(year__exact=str(year_int))  # Exact match (single year format)
+                | Q(first_year=str(year_int))  # Starts with keyword (e.g., "2025-26")
+                | Q(second_year=str(year_int))  # Ends with keyword (e.g., "2024-25")
+                | Q(first_year__icontains=keyword)  # Contains in first_year
+                | Q(second_year__icontains=keyword)  # Contains in second_year
             )
         else:
-            year_query = Q(year__icontains=keyword)
+            year_query = (
+                Q(year__icontains=keyword)
+                | Q(first_year__icontains=keyword)
+                | Q(second_year__icontains=keyword)
+            )
     else:
-        year_query = Q(year__icontains=keyword)
+        year_query = (
+            Q(year__icontains=keyword)
+            | Q(first_year__icontains=keyword)
+            | Q(second_year__icontains=keyword)
+        )
 
-    seasons = Season.objects.filter(year_query).order_by("-year")[:10]
-    result = list(seasons)
+    # Get more results to allow for reordering
+    seasons = Season.objects.filter(year_query).order_by("-year")[:20]
+    seasons_list = list(seasons)
+
+    # Reorder by priority using first_year and second_year
+    seasons_list.sort(key=lambda s: (_get_season_priority(s, keyword), s.year))
+
+    # Take top 10 after reordering
+    result = seasons_list[:10]
 
     cache.set(cache_key, result, timeout=settings.CACHE_TIMEOUT_MEDIUM)
 
