@@ -62,11 +62,13 @@ print(kits)
 
 # Get kit details by ID
 response = requests.get(
-    f"{BASE_URL}/kit-json/1",
+    f"{BASE_URL}/kits/1",
     headers=headers
 )
 kit = response.json()
 print(kit)
+# Kit type now includes: id, name, category, category_order, order_priority, is_goalkeeper
+print(f"Kit type: {kit['type']['name']} (Category: {kit['type']['category']})")
 
 # Search seasons
 response = requests.get(

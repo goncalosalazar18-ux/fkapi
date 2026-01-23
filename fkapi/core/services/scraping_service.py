@@ -18,7 +18,9 @@ class ScrapingService:
     """Service for orchestrating scraping operations."""
 
     @staticmethod
-    def process_kit_data(data: KitPageData, slug: str, kit_id: str | None, use_proxy: bool = False, existing_kit_id: int | None = None) -> Kit | None:
+    def process_kit_data(
+        data: KitPageData, slug: str, kit_id: str | None, use_proxy: bool = False, existing_kit_id: int | None = None
+    ) -> Kit | None:
         """
         Process scraped kit data and create/update kit in database.
 
@@ -57,8 +59,12 @@ class ScrapingService:
                 logger.error(f"Error getting season: {str(e)}")
                 return None
 
-            # Get kit type
-            type_k, _ = Type_K.objects.get_or_create(name=data.kit_type)
+            # Get kit type and auto-categorize if newly created
+            type_k, created = Type_K.objects.get_or_create(name=data.kit_type)
+            if created:
+                type_k.categorize()
+                type_k.save()
+                logger.debug(f"Created and categorized new kit type: {type_k.name} -> {type_k.category}")
             logger.debug(f"Kit type: {type_k}")
 
             # Create or update kit
