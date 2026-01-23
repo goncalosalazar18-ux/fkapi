@@ -83,7 +83,7 @@ class Type_K(models.Model):  # noqa: N801
     - 'preseason': Pre-season, Temporary
     - 'training': Training
     - 'travel': Travel, Polo
-    - 'jacket': Chaquetas (Anthem, Rain, Jacket, Windbreaker, Track, vest)
+    - 'jacket': Jackets (Anthem, Rain, Jacket, Windbreaker, Track, vest)
 
     Order priority: Lower numbers appear first within category.
     Category order: 1=match, 2=prematch, 3=preseason, 4=training, 5=travel, 6=jacket
@@ -98,7 +98,7 @@ class Type_K(models.Model):  # noqa: N801
             ("preseason", "Pre-season/Temporary"),
             ("training", "Training"),
             ("travel", "Travel/Polo"),
-            ("jacket", "Chaquetas"),
+            ("jacket", "Jackets"),
         ],
         default="match",
         db_index=True,
