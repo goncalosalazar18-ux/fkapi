@@ -1,0 +1,39 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'fkapi'
+
+scrape_configs:
+  - job_name: 'django'
+    static_configs:
+      - targets: ['web:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 10s
+
+  - job_name: 'celery'
+    static_configs:
+      - targets: ['flower:5555']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    # Only scrapes if flower is running (services profile)
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis_exporter:9121']
+    scrape_interval: 15s
+    # Only scrapes if redis_exporter is running (monitoring + services profiles)
+
+  - job_name: 'postgres'
+    static_configs:
+      # For Docker PostgreSQL: use postgres_exporter:9187
+      # For external PostgreSQL: use host.docker.internal:9187 (Linux) or host.docker.internal:9187 (Windows/Mac)
+      - targets: ['postgres_exporter:9187']
+    scrape_interval: 15s
+    # Note: For external PostgreSQL, update target to host.docker.internal:9187 or 127.0.0.1:9187
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

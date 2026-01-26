@@ -85,8 +85,32 @@ def execute_task_async(task_func: Callable, *args, **kwargs) -> Any:
             logger.warning(f"Celery task failed, falling back to threading: {e}")
 
     import threading
+    import traceback
 
-    thread = threading.Thread(target=task_func, args=args, kwargs=kwargs, daemon=True)
+    def task_wrapper():
+        """Wrapper to catch and log errors in thread execution."""
+        try:
+            from django.db import connections
+
+            task_name = getattr(task_func, "__name__", str(task_func))
+            logger.info(f"Executing task {task_name} in thread")
+            result = task_func(*args, **kwargs)
+            logger.info(f"Task {task_name} completed successfully")
+
+            connections.close_all()
+            return result
+        except Exception as e:
+            task_name = getattr(task_func, "__name__", str(task_func))
+            logger.error(
+                f"Error executing task {task_name} in thread: {str(e)}\n"
+                f"Traceback: {traceback.format_exc()}"
+            )
+            from django.db import connections
+            connections.close_all()
+            raise
+
+    thread = threading.Thread(target=task_wrapper, daemon=True)
     thread.start()
-    logger.info("Task executed in thread (Celery not available)")
+    task_name = getattr(task_func, "__name__", str(task_func))
+    logger.info(f"Task {task_name} executed in thread (Celery not available)")
     return thread

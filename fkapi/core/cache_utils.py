@@ -134,6 +134,20 @@ def invalidate_search_cache() -> None:
     _invalidate_patterns(patterns)
 
 
+def invalidate_user_collection_cache(userid: int) -> None:
+    """
+    Invalidate cache entry for a specific user collection.
+
+    Args:
+        userid: User ID from FootballKitArchive
+    """
+    from django.core.cache import cache
+
+    cache_key = generate_cache_key("user_collection", userid)
+    cache.delete(cache_key)
+    logger.info(f"Invalidated user collection cache for userid: {userid}")
+
+
 def _invalidate_patterns(patterns: list[str]) -> None:
     """
     Invalidate cache entries matching the given patterns.

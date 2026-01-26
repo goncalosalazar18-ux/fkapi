@@ -221,6 +221,7 @@ api = NinjaAPI(
             },
             {"name": "Brands", "description": "Operations related to kit brands (Adidas, Nike, Puma, etc.)"},
             {"name": "Competitions", "description": "Operations related to football competitions and leagues"},
+            {"name": "User Collection", "description": "Operations for scraping and retrieving user collections from FootballKitArchive"},
             {"name": "Testing", "description": "Testing and development endpoints"},
         ],
     },
@@ -263,6 +264,7 @@ def custom_exception_handler(request: HttpRequest, exc: Exception) -> Any:
     "/health",
     summary="Health Check",
     tags=["System"],
+    auth=None,  # Public endpoint, no authentication required
     description="""
     Check if the API and database are functioning correctly.
 
@@ -1787,29 +1789,45 @@ def get_random_clubs(
     If the collection is already cached, returns data immediately (200 OK).
     If not cached, starts a Celery task for asynchronous scraping and returns task_id (202 Accepted).
 
+    **Query Parameters:**
+    - `force` (bool, default: false): If true, invalidates existing cache and forces a fresh scrape
+
     **Response Codes:**
     - `200 OK`: Collection found in cache, data returned immediately
     - `202 Accepted`: Scraping started, use task_id to check status
 
     **Usage Example:**
-    1. POST /api/user-collection/148184/scrape
-    2. If you receive 202, wait ~60 seconds
-    3. GET /api/user-collection/148184 to retrieve data
+    1. POST /api/user-collection/148184/scrape (uses cache if available)
+    2. POST /api/user-collection/148184/scrape?force=true (forces fresh scrape)
+    3. If you receive 202, wait ~60 seconds
+    4. GET /api/user-collection/148184 to retrieve data
     """,
     tags=["User Collection"],
 )
 def scrape_user_collection(
-    request: HttpRequest, userid: int = Path(..., description="User ID from FootballKitArchive", example=148184)
+    request: HttpRequest,
+    userid: int = Path(..., description="User ID from FootballKitArchive", example=148184),
+    force: bool = Query(False, description="Force fresh scrape by invalidating cache", example=False),
 ):
     """
     Start scraping user collection.
 
+    Args:
+        userid: User ID from FootballKitArchive
+        force: If True, invalidates existing cache and forces a fresh scrape
+
     Returns:
-        - 200 OK: If already cached, returns data
+        - 200 OK: If already cached (and force=False), returns data
         - 202 Accepted: If starting scraping, returns task_id
     """
 
+    from core.cache_utils import invalidate_user_collection_cache
     from core.tasks import scrape_user_collection_task
+
+    # If force=True, invalidate existing cache
+    if force:
+        invalidate_user_collection_cache(userid)
+        logger.info(f"Cache invalidated for userid {userid} (force=true)")
 
     cache_key = generate_cache_key("user_collection", userid)
     cached_data = cache.get(cache_key)
@@ -1826,14 +1844,38 @@ def scrape_user_collection(
 
     # Start scraping task
     try:
-        task = scrape_user_collection_task.delay(userid)
-        return 202, UserCollectionProcessingResponse(
-            status="processing",
-            task_id=task.id,
-            message="Scraping started. Check status in 60 seconds by calling GET /api/user-collection/{userid}",
-        )
+        from core.utils.celery_utils import is_celery_active
+
+        celery_active = is_celery_active()
+
+        if celery_active:
+            task = scrape_user_collection_task.delay(userid)
+            return 202, UserCollectionProcessingResponse(
+                status="processing",
+                task_id=task.id,
+                message="Scraping started. Check status in 60 seconds by calling GET /api/user-collection/{userid}",
+            )
+        else:
+            logger.info(f"Celery not available, executing task synchronously for userid {userid}")
+            try:
+                from core.scrapers import scrape_user_collection_api
+
+                data = scrape_user_collection_api(userid)
+
+                cache_key = generate_cache_key("user_collection", userid)
+                cache.set(cache_key, data, timeout=604800)
+
+                entries = data.get("entries", [])
+                pagination_info = {
+                    "total_count": len(entries),
+                    "note": "Use GET /api/user-collection/{userid}?page=1&page_size=20 for paginated results",
+                }
+                return 200, UserCollectionCachedResponse(status="cached", data=data, pagination=pagination_info)
+            except Exception as sync_error:
+                logger.error(f"Failed to execute task synchronously: {sync_error}", exc_info=True)
+                raise
     except Exception as e:
-        logger.error(f"Error starting scrape task for userid {userid}: {str(e)}")
+        logger.error(f"Error starting scrape task for userid {userid}: {str(e)}", exc_info=True)
         raise
 
 
@@ -1858,6 +1900,11 @@ def scrape_user_collection(
     **Cache:**
     Data is cached for 1 week (604800 seconds) after scraping.
     Pagination is applied to cached data.
+
+    **Force Re-scrape:**
+    To force a fresh scrape with updated data format, use:
+    POST /api/user-collection/{userid}/scrape?force=true
+    This will invalidate existing cache and scrape with enriched data (brand/club logos, etc.).
     """,
     tags=["User Collection"],
 )

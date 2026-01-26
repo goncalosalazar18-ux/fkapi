@@ -103,11 +103,16 @@ def scrape_user_collection_task(userid: int) -> dict:
         logger.info(f"Starting scrape_user_collection_task for userid: {userid}")
 
         # Scrape collection data
+        logger.info(f"Calling scrape_user_collection_api for userid: {userid}")
         data = scrape_user_collection_api(userid)
+        logger.info(f"Scraping completed for userid: {userid}, got {len(data.get('entries', []))} entries")
 
         # Cache for 1 week (604800 seconds)
         cache_key = generate_cache_key("user_collection", userid)
         cache.set(cache_key, data, timeout=604800)
+
+        entries_count = len(data.get("entries", []))
+        logger.info(f"Successfully scraped and cached collection for userid: {userid} ({entries_count} entries)")
 
         entries_count = len(data.get("entries", []))
         logger.info(f"Successfully scraped and cached collection for userid: {userid} ({entries_count} entries)")
@@ -119,5 +124,5 @@ def scrape_user_collection_task(userid: int) -> dict:
             "pages_scraped": data.get("pages_scraped", 0),
         }
     except Exception as e:
-        logger.error(f"Error scraping user collection for userid {userid}: {str(e)}")
+        logger.error(f"Error scraping user collection for userid {userid}: {str(e)}", exc_info=True)
         raise

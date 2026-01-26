@@ -17,6 +17,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: redis-server --bind 0.0.0.0 --port 6379
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -29,7 +30,7 @@ services:
 
   web:
     build: .
-    command: python manage.py runserver 0.0.0.0:8000
+    command: sh -c "if [ \"$DJANGO_DEBUG\" = \"True\" ]; then python manage.py runserver 0.0.0.0:${DJANGO_PORT:-8000}; else gunicorn --bind 0.0.0.0:${DJANGO_PORT:-8000} --workers 4 --timeout 120 fkapi.wsgi:application; fi"
     volumes:
       - .:/app
     ports:
@@ -79,6 +80,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import redis; r=redis.Redis(host='redis', port=6379, db=0, socket_connect_timeout=2); r.ping()\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   celerybeat:
     build: .
@@ -104,6 +111,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import redis; r=redis.Redis(host='redis', port=6379, db=0, socket_connect_timeout=2); r.ping()\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   flower:
     build: .
@@ -121,7 +134,62 @@ services:
         condition: service_healthy
       celery:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost', 5555)); s.close()\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Monitoring services (use --profile monitoring to enable)
+  prometheus:
+    image: prom/prometheus:latest
+    profiles:
+      - monitoring
+    volumes:
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      - web
+      - redis
+    networks:
+      - default
+
+  redis_exporter:
+    image: oliver006/redis_exporter:latest
+    profiles:
+      - monitoring
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+    ports:
+      - "${REDIS_EXPORTER_PORT:-9121}:9121"
+    depends_on:
+      - redis
+    networks:
+      - default
+
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    profiles:
+      - monitoring
+    environment:
+      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-fkapi}?sslmode=disable
+    ports:
+      - "${POSTGRES_EXPORTER_PORT:-9187}:9187"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - default
 
 volumes:
   postgres_data:
   redis_data:
+  prometheus_data:

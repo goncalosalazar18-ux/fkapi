@@ -12,6 +12,9 @@ class APITests(TestCase):
 
     def setUp(self):
         """Set up test data."""
+        super().setUp()
+        from django.core.cache import cache
+        cache.clear()
         self.client = Client()
 
         # Create test season
@@ -41,6 +44,12 @@ class APITests(TestCase):
             rating=4.5,
         )
         self.kit.competition.add(self.competition)
+
+    def tearDown(self):
+        """Clean up after each test."""
+        super().tearDown()
+        from django.core.cache import cache
+        cache.clear()
 
     def test_health_check(self):
         """Test health check endpoint."""
@@ -380,9 +389,10 @@ class APITests(TestCase):
         # Task should not be called if cached
         mock_task.delay.assert_not_called()
 
+    @patch("core.utils.celery_utils.is_celery_active")
     @patch("core.tasks.scrape_user_collection_task")
     @patch("core.cache_utils.generate_cache_key")
-    def test_scrape_user_collection_post_not_cached(self, mock_cache_key, mock_task):
+    def test_scrape_user_collection_post_not_cached(self, mock_cache_key, mock_task, mock_is_celery_active):
         """Test POST endpoint when data is not cached."""
         from unittest.mock import MagicMock
 
@@ -391,6 +401,7 @@ class APITests(TestCase):
         userid = 123
         cache_key = f"user_collection_{userid}"
         mock_cache_key.return_value = cache_key
+        mock_is_celery_active.return_value = True
 
         # Clear cache
         cache.delete(cache_key)
@@ -407,6 +418,38 @@ class APITests(TestCase):
         self.assertEqual(data["status"], "processing")
         self.assertEqual(data["task_id"], "task-123")
         mock_task.delay.assert_called_once_with(userid)
+
+    @patch("core.tasks.scrape_user_collection_task")
+    @patch("core.cache_utils.generate_cache_key")
+    def test_scrape_user_collection_post_force_false(self, mock_cache_key, mock_task):
+        """Test POST endpoint with force=false (default) uses cache if available."""
+        from django.core.cache import cache
+
+        userid = 123
+        cache_key = f"user_collection_{userid}"
+        mock_cache_key.return_value = cache_key
+
+        cached_data = {
+            "success": True,
+            "entries": [{"id": i} for i in range(1, 25)],
+            "total_entries": 24,
+            "pages_scraped": 2,
+        }
+        cache.set(cache_key, cached_data, timeout=604800)
+
+        # Call with force=false (or omit parameter)
+        response = self.client.post(f"/api/user-collection/{userid}/scrape", {"force": "false"})
+
+        # Should return cached data
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "cached")
+        self.assertEqual(len(data["data"]["entries"]), 24)
+        # Task should not be called
+        mock_task.delay.assert_not_called()
+
+        # Verify cache still exists
+        self.assertIsNotNone(cache.get(cache_key))
 
     @patch("core.cache_utils.generate_cache_key")
     def test_get_user_collection_success(self, mock_cache_key):

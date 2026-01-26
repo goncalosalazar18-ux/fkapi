@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 
+import logging
 import os
 from pathlib import Path
 
@@ -69,17 +70,45 @@ else:
     CELERY_BEAT_SCHEDULE = {}
 
 # Cache configuration
-CACHES = {
-    "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": os.getenv("REDIS_URL", "redis://localhost:6379/1"),
-        "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
-        },
-        "KEY_PREFIX": "fkapi",
-        "TIMEOUT": 3600,
+# Use Redis if available, fallback to local memory
+# If Celery is enabled, prefer Redis for cache to share between processes
+USE_REDIS_CACHE = os.getenv("USE_REDIS_CACHE", "False").lower() in ("1", "true", "yes")
+
+# If Celery is enabled, try to use Redis for cache (needed for worker-server communication)
+if ENABLE_CELERY and CELERY_AVAILABLE and not USE_REDIS_CACHE:
+    try:
+        import redis
+        r = redis.Redis(host='localhost', port=6379, db=1, socket_connect_timeout=1)
+        r.ping()
+        USE_REDIS_CACHE = True
+        logger = logging.getLogger(__name__)
+        logger.info("Celery detected: Auto-enabling Redis cache for inter-process communication")
+    except Exception:
+        pass
+
+if USE_REDIS_CACHE:
+    REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/1")
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": REDIS_URL,
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+                "IGNORE_EXCEPTIONS": True,  # Fallback to no-op if Redis unavailable
+            },
+            "KEY_PREFIX": "fkapi",
+            "TIMEOUT": 3600,
+        }
     }
-}
+else:
+    # Use local memory cache (no Redis needed)
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "KEY_PREFIX": "fkapi",
+            "TIMEOUT": 3600,
+        }
+    }
 
 # Cache settings
 CACHE_TIMEOUT_SHORT = 300  # 5 minutes

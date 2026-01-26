@@ -27,6 +27,15 @@ class Command(BaseCommand):
             # Scrape collection using the API
             data = scrape_user_collection_api(userid)
 
+            # Cache the data (same as the task does)
+            from django.core.cache import cache
+
+            from core.cache_utils import generate_cache_key
+
+            cache_key = generate_cache_key("user_collection", userid)
+            cache.set(cache_key, data, timeout=604800)
+            logger.info(f"Cached collection data for userid: {userid}")
+
             entries = data.get("entries", [])
             total_entries = len(entries)
             pages_scraped = data.get("pages_scraped", 0)

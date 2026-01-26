@@ -1312,7 +1312,9 @@ def scrape_user_collection_api(userid: int) -> dict:
                 # Clean entry: remove unwanted fields (purchase/value, gender, printing_type, user block)
                 # but KEEP the entry itself
                 cleaned_entry = _clean_collection_entry(entry)
-                filtered_entries.append(cleaned_entry)
+                # Enrich entry with Brand and Club data (logos, etc.)
+                enriched_entry = _enrich_collection_entry(cleaned_entry)
+                filtered_entries.append(enriched_entry)
 
             # Log filtering statistics
             if len(entries) > 0:
@@ -1424,3 +1426,147 @@ def _clean_collection_entry(entry: dict) -> dict:
         cleaned["kit"] = kit
 
     return cleaned
+
+
+def _enrich_collection_entry(entry: dict) -> dict:
+    """
+    Enrich a collection entry with Brand and Club data from database.
+
+    Adds:
+    - Brand: name, slug, logo, logo_dark (from brand_name)
+    - Club: name, slug, logo, logo_dark (from team_name or kit URL)
+
+    Args:
+        entry: Cleaned entry dictionary
+
+    Returns:
+        dict: Enriched entry with brand and club data
+    """
+    import re
+
+    enriched = entry.copy()
+
+    # Enrich Brand data
+    if "kit" in enriched and isinstance(enriched["kit"], dict):
+        kit = enriched["kit"].copy()
+        brand_name = kit.get("brand_name")
+
+        if brand_name:
+            try:
+                brand = None
+                # First try: exact match (case-insensitive)
+                brand = Brand.objects.filter(name__iexact=brand_name).first()
+
+                # Second try: unaccent search (handles special characters like ö, é, etc.)
+                if not brand:
+                    from django.db import connection
+
+                    # Use unaccent filter if PostgreSQL, otherwise icontains
+                    if connection.vendor == "postgresql":
+                        brand = Brand.objects.filter(name__unaccent__iexact=brand_name).first()
+                    else:
+                        brand = Brand.objects.filter(name__icontains=brand_name).first()
+
+                # Third try: contains search as fallback
+                if not brand:
+                    brand = Brand.objects.filter(name__icontains=brand_name).first()
+
+                if brand:
+                    kit["brand"] = {
+                        "id": brand.id,
+                        "name": brand.name,
+                        "slug": brand.slug,
+                        "logo": brand.logo,
+                        "logo_dark": brand.logo_dark,
+                    }
+                else:
+                    logger.debug(f"Brand not found: {brand_name}")
+                    # Keep brand_name but no additional data
+                    kit["brand"] = {"name": brand_name}
+            except Exception as e:
+                logger.warning(f"Error enriching brand {brand_name}: {str(e)}")
+                kit["brand"] = {"name": brand_name}
+
+        # Enrich Club data
+        team_name = kit.get("team_name")
+        kit_url = kit.get("url", "")
+        kit_id = kit.get("id")
+
+        if team_name:
+            club = None
+            try:
+                from django.db import connection
+
+                # First try: exact match (case-insensitive)
+                club = Club.objects.filter(name__iexact=team_name).first()
+
+                # Second try: unaccent search (handles special characters)
+                if not club:
+                    if connection.vendor == "postgresql":
+                        club = Club.objects.filter(name__unaccent__iexact=team_name).first()
+                    else:
+                        club = Club.objects.filter(name__icontains=team_name).first()
+
+                # Third try: contains search as fallback
+                if not club:
+                    club = Club.objects.filter(name__icontains=team_name).first()
+
+                # Fifth try: if kit_id is available, search Kit by kit_id
+                if not club and kit_id:
+                    kit_obj = Kit.objects.filter(kit_id=str(kit_id)).first()
+                    if kit_obj:
+                        club = kit_obj.team
+
+                # Sixth try: if not found, extract club slug from kit URL
+                if not club and kit_url:
+                    # Extract kit slug from URL: /ss-lazio-2020-21-home-kit/9280/ -> ss-lazio-2020-21-home-kit
+                    kit_slug = kit_url.strip("/").split("/")[-2] if kit_url.count("/") >= 2 else None
+
+                    if kit_slug:
+                        # Try to extract club slug by removing year and kit type
+                        # Pattern: club-slug-year-type-kit -> club-slug
+                        # Examples: ss-lazio-2020-21-home-kit -> ss-lazio
+                        #           arsenal-2024-25-away-kit -> arsenal
+                        #           manchester-united-2023-24-third-kit -> manchester-united
+
+                        # Remove year pattern (e.g., -2020-21, -2024-25, -2020)
+                        # Matches: -2020-21, -2024-25, -2020, -2024-25-26
+                        club_slug_candidate = re.sub(r"-\d{4}(?:-\d{2}){0,2}", "", kit_slug, flags=re.IGNORECASE)
+
+                        # Remove kit type pattern (e.g., -home-kit, -away-kit, -third-kit, -gk-1-kit, -special-kit)
+                        club_slug_candidate = re.sub(
+                            r"-(?:home|away|third|gk-\d+|special)-kit$", "", club_slug_candidate, flags=re.IGNORECASE
+                        )
+
+                        potential_club_slug = club_slug_candidate.strip("-")
+
+                        if potential_club_slug:
+                            # Search in Kit table by slug that starts with club slug
+                            kit_obj = Kit.objects.filter(slug__istartswith=potential_club_slug).first()
+                            if kit_obj:
+                                club = kit_obj.team
+                            else:
+                                # Try direct Club lookup by slug
+                                club = Club.objects.filter(slug__iexact=potential_club_slug).first()
+
+                if club:
+                    kit["club"] = {
+                        "id": club.id,
+                        "name": club.name,
+                        "slug": club.slug,
+                        "logo": club.logo,
+                        "logo_dark": club.logo_dark,
+                        "country": str(club.country) if club.country else None,
+                    }
+                else:
+                    logger.debug(f"Club not found: {team_name} (URL: {kit_url})")
+                    # Keep team_name but no additional data
+                    kit["club"] = {"name": team_name}
+
+            except Exception as e:
+                logger.warning(f"Error enriching club {team_name}: {str(e)}")
+                kit["club"] = {"name": team_name}
+
+        enriched["kit"] = kit
+
+    return enriched

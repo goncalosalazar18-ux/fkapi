@@ -96,6 +96,29 @@ response = requests.get(
 )
 kits = response.json()
 print(kits)
+
+# Scrape user collection
+userid = 148184
+response = requests.post(
+    f"{BASE_URL}/user-collection/{userid}/scrape",
+    headers=headers
+)
+result = response.json()
+print(result)
+
+# If status is "processing", wait ~60 seconds, then get the collection
+if result.get("status") == "processing":
+    import time
+    time.sleep(60)
+    
+    # Get user collection with pagination
+    response = requests.get(
+        f"{BASE_URL}/user-collection/{userid}",
+        params={"page": 1, "page_size": 20},
+        headers=headers
+    )
+    collection = response.json()
+    print(collection)
 ```
 
 ### JavaScript (Fetch API)
@@ -155,11 +178,44 @@ async function getKitsBulk(slugs) {
     return kits;
 }
 
+// Scrape user collection
+async function scrapeUserCollection(userid) {
+    const response = await fetch(
+        `${BASE_URL}/user-collection/${userid}/scrape`,
+        { method: 'POST', headers }
+    );
+    const result = await response.json();
+    console.log(result);
+    return result;
+}
+
+// Get user collection
+async function getUserCollection(userid, page = 1, pageSize = 20) {
+    const response = await fetch(
+        `${BASE_URL}/user-collection/${userid}?page=${page}&page_size=${pageSize}`,
+        { headers }
+    );
+    const collection = await response.json();
+    console.log(collection);
+    return collection;
+}
+
 // Usage
 searchClubs('manchester');
 getRandomKits(1, 20);
 getKitDetails(1);
 getKitsBulk('manchester-united-2024-25-home-kit,liverpool-2024-25-away-kit');
+
+// Scrape and get user collection
+const userid = 148184;
+scrapeUserCollection(userid).then(result => {
+    if (result.status === 'processing') {
+        // Wait 60 seconds, then get collection
+        setTimeout(() => {
+            getUserCollection(userid, 1, 20);
+        }, 60000);
+    }
+});
 ```
 
 ### cURL
@@ -197,6 +253,15 @@ curl -X POST "${BASE_URL}/merge-clubs/" \
     "source_id": 1,
     "target_id": 2
   }'
+
+# Scrape user collection
+USERID=148184
+curl -X POST "${BASE_URL}/user-collection/${USERID}/scrape" \
+  -H "X-API-Key: ${API_KEY}"
+
+# Get user collection with pagination (wait ~60 seconds after scraping)
+curl -X GET "${BASE_URL}/user-collection/${USERID}?page=1&page_size=20" \
+  -H "X-API-Key: ${API_KEY}"
 ```
 
 ## Response Examples
@@ -330,6 +395,59 @@ curl -X POST "${BASE_URL}/merge-clubs/" \
         "main_img_url": "https://www.footballkitarchive.com/..."
     }
 ]
+```
+
+### User Collection Scrape Response (202 Accepted)
+
+```json
+{
+    "status": "processing",
+    "task_id": "abc123-def456-ghi789",
+    "message": "Scraping started. Check status in 60 seconds by calling GET /api/user-collection/148184"
+}
+```
+
+### User Collection Response (200 OK)
+
+```json
+{
+    "status": "ready",
+    "data": {
+        "success": true,
+        "entries": [
+            {
+                "kit_id": 12345,
+                "kit_name": "Manchester United 2024-25 Home Kit",
+                "kit_slug": "manchester-united-2024-25-home-kit",
+                "team_name": "Manchester United",
+                "season_year": "2024-25",
+                "main_img_url": "https://www.footballkitarchive.com/..."
+            }
+        ],
+        "total_entries": 150,
+        "pages_scraped": 8
+    },
+    "pagination": {
+        "current_page": 1,
+        "total_pages": 8,
+        "total_count": 150,
+        "page_size": 20,
+        "has_next": true,
+        "has_previous": false,
+        "next_page": 2,
+        "previous_page": null
+    },
+    "cached_until": "2026-02-02T12:00:00"
+}
+```
+
+### User Collection Not Found Response (404 Not Found)
+
+```json
+{
+    "status": "not_found",
+    "message": "Collection not found for userid 148184. Call POST /api/user-collection/148184/scrape first to start scraping."
+}
 ```
 
 ## Error Response Examples

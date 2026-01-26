@@ -440,6 +440,125 @@ Send kit information to an external API endpoint.
 }
 ```
 
+## User Collection Endpoints
+
+### Scrape User Collection
+
+**POST** `/api/user-collection/{userid}/scrape`
+
+Start asynchronous scraping of a user's collection from FootballKitArchive.
+
+**Path Parameters:**
+- `userid` (required): User ID from FootballKitArchive
+
+**Response Codes:**
+- `200 OK`: Collection found in cache, data returned immediately
+- `202 Accepted`: Scraping started, use task_id to check status
+
+**Response (200 OK - Cached):**
+```json
+{
+  "status": "cached",
+  "data": {
+    "success": true,
+    "entries": [...],
+    "total_entries": 150,
+    "pages_scraped": 8
+  },
+  "pagination": {
+    "total_count": 150,
+    "note": "Use GET /api/user-collection/{userid}?page=1&page_size=20 for paginated results"
+  }
+}
+```
+
+**Response (202 Accepted - Processing):**
+```json
+{
+  "status": "processing",
+  "task_id": "abc123-def456-...",
+  "message": "Scraping started. Check status in 60 seconds by calling GET /api/user-collection/{userid}"
+}
+```
+
+**Example:**
+```
+POST /api/user-collection/148184/scrape
+```
+
+**Usage Flow:**
+1. POST `/api/user-collection/{userid}/scrape` to start scraping
+2. If you receive 202, wait ~60 seconds
+3. GET `/api/user-collection/{userid}` to retrieve data
+
+### Get User Collection
+
+**GET** `/api/user-collection/{userid}`
+
+Get a user's collection from cache with pagination.
+
+**Path Parameters:**
+- `userid` (required): User ID from FootballKitArchive
+
+**Query Parameters:**
+- `page` (optional, default: 1): Page number (min: 1)
+- `page_size` (optional, default: 20, max: 100): Items per page (min: 1, max: 100)
+
+**Response Codes:**
+- `200 OK`: Collection found in cache (paginated data)
+- `404 Not Found`: Collection not found, suggest starting scraping first
+
+**Response (200 OK):**
+```json
+{
+  "status": "ready",
+  "data": {
+    "success": true,
+    "entries": [
+      {
+        "kit_id": 12345,
+        "kit_name": "Manchester United 2024-25 Home Kit",
+        "kit_slug": "manchester-united-2024-25-home-kit",
+        "team_name": "Manchester United",
+        "season_year": "2024-25",
+        "main_img_url": "https://..."
+      }
+    ],
+    "total_entries": 150,
+    "pages_scraped": 8
+  },
+  "pagination": {
+    "current_page": 1,
+    "total_pages": 8,
+    "total_count": 150,
+    "page_size": 20,
+    "has_next": true,
+    "has_previous": false,
+    "next_page": 2,
+    "previous_page": null
+  },
+  "cached_until": "2026-02-02T12:00:00"
+}
+```
+
+**Response (404 Not Found):**
+```json
+{
+  "status": "not_found",
+  "message": "Collection not found for userid 148184. Call POST /api/user-collection/148184/scrape first to start scraping."
+}
+```
+
+**Example:**
+```
+GET /api/user-collection/148184?page=1&page_size=20
+```
+
+**Notes:**
+- Data is cached for 1 week (604800 seconds) after scraping
+- Pagination is applied to cached data
+- If collection is not found, call POST endpoint first to start scraping
+
 ## Admin Endpoints
 
 ### Get Merge Suggestions
