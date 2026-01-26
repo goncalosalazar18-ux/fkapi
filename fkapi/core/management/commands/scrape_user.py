@@ -1,47 +1,78 @@
-import time
+import json
+import logging
 
-from bs4 import BeautifulSoup
 from django.core.management.base import BaseCommand
 
-from core.http import http_get
-from core.models import Kit
-from core.scrapers import scrape_kit
+from core.scrapers import scrape_user_collection_api
+
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
+    help = "Scrape user collection from FootballKitArchive using user ID"
+
     def add_arguments(self, parser):
-        parser.add_argument("username", type=str, help="Username to scrape")
+        parser.add_argument("userid", type=int, help="User ID to scrape (integer)")
 
     def handle(self, *args, **options):
-        items = []
-        username = options["username"]
-        # keep scraping pages until no more pages
-        for page in range(1, 100):
-            response = http_get(
-                f"https://www.footballkitarchive.com/user/{username}?p={page}",
+        userid = options["userid"]
+
+        self.stdout.write(self.style.SUCCESS(f"Starting to scrape collection for userid: {userid}"))
+
+        try:
+            # Configure logging to show INFO level
+            logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+            logger.setLevel(logging.INFO)
+
+            # Scrape collection using the API
+            data = scrape_user_collection_api(userid)
+
+            entries = data.get("entries", [])
+            total_entries = len(entries)
+            pages_scraped = data.get("pages_scraped", 0)
+
+            self.stdout.write(
+                self.style.SUCCESS(f"Successfully scraped {total_entries} entries from {pages_scraped} pages")
             )
-            print(f"Scraping page {page}")
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, "html.parser")
-                for kit in soup.select("div.kit"):
-                    a = kit.find("a")
-                    if a:
-                        items.append(a["href"])
 
-                next_page_link = soup.select_one("div.pager a.button[href*='?p=']")
-                if not next_page_link:
-                    break
+            if total_entries == 0:
+                self.stdout.write(
+                    self.style.WARNING(
+                        "\n⚠️  WARNING: No entries returned. This could mean:\n"
+                        "  1. All entries were filtered out (custom fields, purchase/value, gender/printing_type)\n"
+                        "  2. The user has no collection items\n"
+                        "  3. There was an issue with the API response\n"
+                        "\nCheck the logs above for filtering details."
+                    )
+                )
 
-        for item in items:
-            # Extract slug and kit_id from href (format: slug/id/ or slug/id)
-            slug_parts = item.strip("/").split("/")
-            clean_slug = slug_parts[0]
-            kit_id = slug_parts[1] if len(slug_parts) > 1 else None
+            # Optionally, extract kit slugs and IDs for further processing
+            kit_info = []
+            for entry in entries:
+                kit = entry.get("kit", {})
+                kit_url = kit.get("url", "")
+                if kit_url:
+                    # Parse /slug/id/ format
+                    kit_url = kit_url.strip("/")
+                    parts = kit_url.split("/")
+                    if len(parts) >= 2:
+                        slug = parts[0]
+                        kit_id = parts[1]
+                        kit_info.append({"slug": slug, "kit_id": kit_id})
 
-            # find if a kit objects with the slug exists
-            kit = Kit.objects.filter(slug=clean_slug).first()
-            if kit:
-                print(f"Kit {kit.name} already exists")
-            else:
-                scrape_kit(clean_slug, kit_id=kit_id)
-                time.sleep(1)
+            if kit_info:
+                self.stdout.write(f"\nExtracted {len(kit_info)} kit references:")
+                for info in kit_info[:10]:  # Show first 10
+                    self.stdout.write(f"  - {info['slug']} (ID: {info['kit_id']})")
+                if len(kit_info) > 10:
+                    self.stdout.write(f"  ... and {len(kit_info) - 10} more")
+
+            # Optionally save to file for inspection
+            output_file = f"user_collection_{userid}.json"
+            with open(output_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            self.stdout.write(self.style.SUCCESS(f"\nData saved to: {output_file}"))
+
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"Error scraping user collection: {str(e)}"))
+            raise

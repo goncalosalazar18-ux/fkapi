@@ -44,6 +44,8 @@ from core.serializers import (
     TypeJsonSchema,
 )
 
+logger = logging.getLogger(__name__)
+
 
 # Create a simple serializer for the search results
 class KitSearchResult(Schema):
@@ -52,6 +54,31 @@ class KitSearchResult(Schema):
     main_img_url: str
     team_name: str
     season_year: str
+
+
+# User Collection API Schemas
+class UserCollectionCachedResponse(Schema):
+    status: str = "cached"
+    data: dict
+    pagination: dict | None = None
+
+
+class UserCollectionProcessingResponse(Schema):
+    status: str = "processing"
+    task_id: str
+    message: str
+
+
+class UserCollectionReadyResponse(Schema):
+    status: str = "ready"
+    data: dict
+    pagination: dict
+    cached_until: str | None = None
+
+
+class UserCollectionNotFoundResponse(Schema):
+    status: str = "not_found"
+    message: str
 
 
 # Enable API key authentication if configured
@@ -1104,16 +1131,10 @@ def search_seasons(
             )
         else:
             year_query = (
-                Q(year__icontains=keyword)
-                | Q(first_year__icontains=keyword)
-                | Q(second_year__icontains=keyword)
+                Q(year__icontains=keyword) | Q(first_year__icontains=keyword) | Q(second_year__icontains=keyword)
             )
     else:
-        year_query = (
-            Q(year__icontains=keyword)
-            | Q(first_year__icontains=keyword)
-            | Q(second_year__icontains=keyword)
-        )
+        year_query = Q(year__icontains=keyword) | Q(first_year__icontains=keyword) | Q(second_year__icontains=keyword)
 
     # Get more results to allow for reordering
     seasons = Season.objects.filter(year_query).order_by("-year")[:20]
@@ -1754,3 +1775,161 @@ def get_random_clubs(
             },
             "error": str(e),
         }
+
+
+@api.post(
+    "/user-collection/{userid}/scrape",
+    response={200: UserCollectionCachedResponse, 202: UserCollectionProcessingResponse},
+    summary="Scrape User Collection",
+    description="""
+    Start asynchronous scraping of a user's collection from FootballKitArchive.
+
+    If the collection is already cached, returns data immediately (200 OK).
+    If not cached, starts a Celery task for asynchronous scraping and returns task_id (202 Accepted).
+
+    **Response Codes:**
+    - `200 OK`: Collection found in cache, data returned immediately
+    - `202 Accepted`: Scraping started, use task_id to check status
+
+    **Usage Example:**
+    1. POST /api/user-collection/148184/scrape
+    2. If you receive 202, wait ~60 seconds
+    3. GET /api/user-collection/148184 to retrieve data
+    """,
+    tags=["User Collection"],
+)
+def scrape_user_collection(
+    request: HttpRequest, userid: int = Path(..., description="User ID from FootballKitArchive", example=148184)
+):
+    """
+    Start scraping user collection.
+
+    Returns:
+        - 200 OK: If already cached, returns data
+        - 202 Accepted: If starting scraping, returns task_id
+    """
+
+    from core.tasks import scrape_user_collection_task
+
+    cache_key = generate_cache_key("user_collection", userid)
+    cached_data = cache.get(cache_key)
+
+    if cached_data:
+        # For POST endpoint, return full data (no pagination needed here)
+        # The GET endpoint will handle pagination
+        entries = cached_data.get("entries", [])
+        pagination_info = {
+            "total_count": len(entries),
+            "note": "Use GET /api/user-collection/{userid}?page=1&page_size=20 for paginated results",
+        }
+        return 200, UserCollectionCachedResponse(status="cached", data=cached_data, pagination=pagination_info)
+
+    # Start scraping task
+    try:
+        task = scrape_user_collection_task.delay(userid)
+        return 202, UserCollectionProcessingResponse(
+            status="processing",
+            task_id=task.id,
+            message="Scraping started. Check status in 60 seconds by calling GET /api/user-collection/{userid}",
+        )
+    except Exception as e:
+        logger.error(f"Error starting scrape task for userid {userid}: {str(e)}")
+        raise
+
+
+@api.get(
+    "/user-collection/{userid}",
+    response={200: UserCollectionReadyResponse, 404: UserCollectionNotFoundResponse},
+    summary="Get User Collection",
+    description="""
+    Get a user's collection from cache with pagination.
+
+    If the collection is cached, returns paginated data (200 OK).
+    If not cached, returns 404 Not Found suggesting to call POST /api/user-collection/{userid}/scrape first.
+
+    **Pagination:**
+    - `page` (int, default: 1): Page number (min: 1)
+    - `page_size` (int, default: 20, max: 100): Items per page (min: 1, max: 100)
+
+    **Response Codes:**
+    - `200 OK`: Collection found in cache (paginated data)
+    - `404 Not Found`: Collection not found, suggest starting scraping first
+
+    **Cache:**
+    Data is cached for 1 week (604800 seconds) after scraping.
+    Pagination is applied to cached data.
+    """,
+    tags=["User Collection"],
+)
+def get_user_collection(
+    request: HttpRequest,
+    userid: int = Path(..., description="User ID from FootballKitArchive", example=148184),
+    page: int = _QUERY_PAGE,
+    page_size: int = _QUERY_PAGE_SIZE,
+):
+    """
+    Get user collection from cache with pagination.
+
+    Args:
+        request: The HTTP request
+        userid: User ID from FootballKitArchive
+        page: Page number for pagination (default: 1)
+        page_size: Number of items per page (default: 20, max: 100)
+
+    Returns:
+        - 200 OK: Paginated collection data
+        - 404 Not Found: No data in cache
+    """
+    from datetime import datetime, timedelta
+
+    from django.core.paginator import Paginator
+
+    cache_key = generate_cache_key("user_collection", userid)
+    cached_data = cache.get(cache_key)
+
+    if cached_data:
+        # Extract entries from cached data
+        entries = cached_data.get("entries", [])
+        total_entries = len(entries)
+
+        # Paginate entries
+        paginator = Paginator(entries, page_size)
+        try:
+            page_obj = paginator.get_page(page)
+        except Exception:
+            # Invalid page number, return first page
+            page_obj = paginator.get_page(1)
+            page = 1
+
+        # Build paginated response data
+        paginated_data = {
+            "success": cached_data.get("success", True),
+            "entries": list(page_obj),
+            "total_entries": total_entries,
+            "pages_scraped": cached_data.get("pages_scraped", 0),
+        }
+
+        # Build pagination info
+        pagination_info = {
+            "current_page": page_obj.number,
+            "total_pages": paginator.num_pages,
+            "total_count": total_entries,
+            "page_size": page_size,
+            "has_next": page_obj.has_next(),
+            "has_previous": page_obj.has_previous(),
+            "next_page": page_obj.next_page_number() if page_obj.has_next() else None,
+            "previous_page": page_obj.previous_page_number() if page_obj.has_previous() else None,
+        }
+
+        # Calculate cache expiration time (1 week from now if we had the set time)
+        # Since we don't have the exact set time, we'll just indicate it's cached
+        cached_until = (datetime.now() + timedelta(seconds=604800)).isoformat()
+
+        return 200, UserCollectionReadyResponse(
+            status="ready", data=paginated_data, pagination=pagination_info, cached_until=cached_until
+        )
+
+    return 404, UserCollectionNotFoundResponse(
+        status="not_found",
+        message=f"Collection not found for userid {userid}. Call POST /api/user-collection/{userid}/scrape first to start scraping.",
+    )

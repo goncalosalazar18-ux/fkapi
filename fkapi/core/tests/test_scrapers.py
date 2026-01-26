@@ -5,9 +5,10 @@ from bs4 import BeautifulSoup
 from django.db import transaction
 from django.test import TestCase
 
-from core.exceptions import KitNotFoundError
+from core.exceptions import KitNotFoundError, RateLimitExceededError, ScrapingError
 from core.models import Brand, Club, Color, Competition, Kit, Season, Type_K
 from core.scrapers import (
+    _clean_collection_entry,
     _get_or_create_brand,
     _process_kit,
     get_current_season,
@@ -20,6 +21,7 @@ from core.scrapers import (
     scrape_kit_lite,
     scrape_lastest,
     scrape_latest_pages,
+    scrape_user_collection_api,
     scrape_whole_club,
 )
 
@@ -1301,3 +1303,285 @@ class ScraperTests(TestCase):
         self.assertEqual(kit.design, "Hoops")
         self.assertEqual(kit.primary_color.name, "Blue")
         self.assertEqual(kit.secondary_color.first().name, "White")
+
+    def test_clean_collection_entry_removes_unwanted_fields(self):
+        """Test that _clean_collection_entry removes unwanted fields but keeps the entry."""
+        entry = {
+            "id": 123,
+            "userid": 80697,
+            "purchase_date": "2025-08-01",
+            "purchase_price": 62,
+            "currency": "EUR",
+            "estimated_value": 75,
+            "value_currency": "EUR",
+            "gender": "mens",
+            "printing_type": "official",
+            "user": {"id": 80697, "name": "Test User"},
+            "kit": {
+                "id": 235,
+                "team_name": "Test Team",
+                "sponsor_name": "Test Sponsor",
+                "footyheadlines_url": "https://example.com",
+                "credits": "Test Credits",
+                "template": "template",
+                "carry_over": False,
+                "userid": 6,
+                "added_at": "2024-01-01",
+                "updated_at": "2024-01-01",
+                "release_date": "2024-01-01",
+                "image_preview_url": "https://example.com/preview.jpg",
+            },
+        }
+
+        cleaned = _clean_collection_entry(entry)
+
+        # Entry should still exist
+        self.assertEqual(cleaned["id"], 123)
+        self.assertEqual(cleaned["userid"], 80697)
+
+        # Unwanted fields should be removed
+        self.assertNotIn("user", cleaned)
+        self.assertNotIn("purchase_date", cleaned)
+        self.assertNotIn("purchase_price", cleaned)
+        self.assertNotIn("currency", cleaned)
+        self.assertNotIn("estimated_value", cleaned)
+        self.assertNotIn("value_currency", cleaned)
+        self.assertNotIn("gender", cleaned)
+        self.assertNotIn("printing_type", cleaned)
+
+        # Kit unwanted fields should be removed
+        self.assertIn("kit", cleaned)
+        self.assertNotIn("sponsor_name", cleaned["kit"])
+        self.assertNotIn("footyheadlines_url", cleaned["kit"])
+        self.assertNotIn("credits", cleaned["kit"])
+        self.assertNotIn("template", cleaned["kit"])
+        self.assertNotIn("carry_over", cleaned["kit"])
+        self.assertNotIn("userid", cleaned["kit"])
+        self.assertNotIn("added_at", cleaned["kit"])
+        self.assertNotIn("updated_at", cleaned["kit"])
+        self.assertNotIn("release_date", cleaned["kit"])
+        self.assertNotIn("image_preview_url", cleaned["kit"])
+
+        # Wanted kit fields should remain
+        self.assertEqual(cleaned["kit"]["id"], 235)
+        self.assertEqual(cleaned["kit"]["team_name"], "Test Team")
+
+    def test_clean_collection_entry_handles_missing_kit(self):
+        """Test that _clean_collection_entry handles entries without kit."""
+        entry = {
+            "id": 123,
+            "purchase_date": "2025-08-01",
+            "gender": "mens",
+            "user": {"id": 80697},
+        }
+
+        cleaned = _clean_collection_entry(entry)
+
+        self.assertEqual(cleaned["id"], 123)
+        self.assertNotIn("user", cleaned)
+        self.assertNotIn("purchase_date", cleaned)
+        self.assertNotIn("gender", cleaned)
+        self.assertNotIn("kit", cleaned)
+
+    @patch("core.scrapers.time.sleep", return_value=None)
+    @patch("core.scrapers.http_get")
+    def test_scrape_user_collection_api_success(self, mock_http_get, mock_sleep):
+        """Test successful scraping of user collection."""
+        # Mock first page response
+        page1_response = Mock()
+        page1_response.status_code = 200
+        page1_response.json.return_value = {
+            "success": True,
+            "entries": [
+                {
+                    "id": 1,
+                    "custom_team": None,
+                    "custom_type": None,
+                    "purchase_date": "2025-01-01",
+                    "gender": "mens",
+                    "user": {"id": 123},
+                    "kit": {
+                        "id": 10,
+                        "team_name": "Team A",
+                        "sponsor_name": "Sponsor",
+                        "footyheadlines_url": "http://example.com",
+                    },
+                },
+                {
+                    "id": 2,
+                    "custom_team": "Custom Team",  # Should be filtered out
+                    "custom_type": None,
+                    "purchase_date": None,
+                    "user": {"id": 123},
+                    "kit": {"id": 11, "team_name": "Team B"},
+                },
+            ],
+            "more_available": False,
+        }
+        page1_response.raise_for_status = Mock()
+
+        mock_http_get.return_value = page1_response
+
+        result = scrape_user_collection_api(123)
+
+        # Should return success structure
+        self.assertTrue(result["success"])
+        self.assertEqual(result["total_entries"], 1)  # Only 1 entry kept (id=1)
+        self.assertEqual(result["pages_scraped"], 1)
+
+        # Check that entry 1 is kept and cleaned
+        self.assertEqual(len(result["entries"]), 1)
+        entry = result["entries"][0]
+        self.assertEqual(entry["id"], 1)
+        self.assertNotIn("user", entry)
+        self.assertNotIn("purchase_date", entry)
+        self.assertNotIn("gender", entry)
+        self.assertNotIn("sponsor_name", entry["kit"])
+        self.assertNotIn("footyheadlines_url", entry["kit"])
+
+        # Check that entry 2 (with custom_team) was filtered out
+        entry_ids = [e["id"] for e in result["entries"]]
+        self.assertNotIn(2, entry_ids)
+
+        # Verify proxy was used
+        mock_http_get.assert_called()
+        call_kwargs = mock_http_get.call_args.kwargs
+        self.assertTrue(call_kwargs.get("use_proxy", False))
+
+    @patch("core.scrapers.time.sleep", return_value=None)
+    @patch("core.scrapers.http_get")
+    def test_scrape_user_collection_api_pagination(self, mock_http_get, mock_sleep):
+        """Test pagination handling in scrape_user_collection_api."""
+        # Mock first page
+        page1_response = Mock()
+        page1_response.status_code = 200
+        page1_response.json.return_value = {
+            "success": True,
+            "entries": [{"id": i, "custom_team": None} for i in range(1, 21)],
+            "more_available": True,
+        }
+        page1_response.raise_for_status = Mock()
+
+        # Mock second page
+        page2_response = Mock()
+        page2_response.status_code = 200
+        page2_response.json.return_value = {
+            "success": True,
+            "entries": [{"id": i, "custom_team": None} for i in range(21, 25)],
+            "more_available": False,
+        }
+        page2_response.raise_for_status = Mock()
+
+        mock_http_get.side_effect = [page1_response, page2_response]
+
+        result = scrape_user_collection_api(123)
+
+        self.assertEqual(result["total_entries"], 24)
+        self.assertEqual(result["pages_scraped"], 2)
+        self.assertEqual(len(result["entries"]), 24)
+        self.assertEqual(mock_http_get.call_count, 2)
+
+    @patch("core.scrapers.http_get")
+    def test_scrape_user_collection_api_filters_custom_fields(self, mock_http_get):
+        """Test that entries with custom_* fields are filtered out."""
+        response = Mock()
+        response.status_code = 200
+        response.json.return_value = {
+            "success": True,
+            "entries": [
+                {"id": 1, "custom_team": None, "custom_type": None},  # Keep
+                {"id": 2, "custom_team": "Custom", "custom_type": None},  # Filter
+                {"id": 3, "custom_team": None, "custom_type": "Custom"},  # Filter
+                {"id": 4, "custom_team": None, "custom_type": None, "custom_season": "Custom"},  # Filter
+            ],
+            "more_available": False,
+        }
+        response.raise_for_status = Mock()
+        mock_http_get.return_value = response
+
+        result = scrape_user_collection_api(123)
+
+        # Only entry 1 should be kept
+        self.assertEqual(result["total_entries"], 1)
+        self.assertEqual(result["entries"][0]["id"], 1)
+
+    @patch("core.scrapers.http_get")
+    def test_scrape_user_collection_api_keeps_entries_with_purchase_fields(self, mock_http_get):
+        """Test that entries with purchase/value fields are kept but fields are removed."""
+        response = Mock()
+        response.status_code = 200
+        response.json.return_value = {
+            "success": True,
+            "entries": [
+                {
+                    "id": 1,
+                    "custom_team": None,
+                    "purchase_date": "2025-01-01",
+                    "purchase_price": 100,
+                    "currency": "EUR",
+                    "estimated_value": 150,
+                    "value_currency": "EUR",
+                    "gender": "mens",
+                    "printing_type": "official",
+                }
+            ],
+            "more_available": False,
+        }
+        response.raise_for_status = Mock()
+        mock_http_get.return_value = response
+
+        result = scrape_user_collection_api(123)
+
+        # Entry should be kept
+        self.assertEqual(result["total_entries"], 1)
+        entry = result["entries"][0]
+
+        # But purchase/value/gender/printing_type fields should be removed
+        self.assertNotIn("purchase_date", entry)
+        self.assertNotIn("purchase_price", entry)
+        self.assertNotIn("currency", entry)
+        self.assertNotIn("estimated_value", entry)
+        self.assertNotIn("value_currency", entry)
+        self.assertNotIn("gender", entry)
+        self.assertNotIn("printing_type", entry)
+
+    @patch("core.scrapers.http_get")
+    def test_scrape_user_collection_api_api_error(self, mock_http_get):
+        """Test handling of API errors."""
+
+        response = Mock()
+        response.status_code = 200
+        response.json.return_value = {"success": False, "error": "Invalid user"}
+        response.raise_for_status = Mock()
+        mock_http_get.return_value = response
+
+        with self.assertRaises(ScrapingError):
+            scrape_user_collection_api(123)
+
+    @patch("core.scrapers.http_get")
+    def test_scrape_user_collection_api_http_error(self, mock_http_get):
+        """Test handling of HTTP errors."""
+        import requests
+
+        response = Mock()
+        response.status_code = 404
+        response.raise_for_status.side_effect = requests.exceptions.HTTPError()
+        mock_http_get.return_value = response
+
+        with self.assertRaises(ScrapingError):
+            scrape_user_collection_api(123)
+
+    @patch("core.scrapers.http_get")
+    def test_scrape_user_collection_api_rate_limit(self, mock_http_get):
+        """Test handling of rate limit errors."""
+        import requests
+
+        response = Mock()
+        response.status_code = 403
+        http_error = requests.exceptions.HTTPError()
+        http_error.response = response
+        response.raise_for_status.side_effect = http_error
+        mock_http_get.return_value = response
+
+        with self.assertRaises(RateLimitExceededError):
+            scrape_user_collection_api(123)

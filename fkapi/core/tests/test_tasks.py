@@ -45,3 +45,44 @@ class TasksTests(TestCase):
         result = tasks.scrape_kit_task("slug-fail")
         self.assertEqual(result["success"], False)
         self.assertEqual(result["slug"], "slug-fail")
+
+    @patch("django.core.cache.cache")
+    @patch("core.scrapers.scrape_user_collection_api")
+    def test_scrape_user_collection_task_success(self, mock_scrape: MagicMock, mock_cache: MagicMock) -> None:
+        """Test successful user collection scraping task."""
+        mock_data = {
+            "success": True,
+            "entries": [{"id": 1, "kit": {"id": 10}}],
+            "total_entries": 1,
+            "pages_scraped": 1,
+        }
+        mock_scrape.return_value = mock_data
+
+        result = tasks.scrape_user_collection_task(123)
+
+        mock_scrape.assert_called_once_with(123)
+        mock_cache.set.assert_called_once()
+        # Check cache key and timeout
+        # cache.set is called with positional args (key, value) and keyword arg (timeout=...)
+        call_args = mock_cache.set.call_args
+        cache_key = call_args[0][0]
+        cached_data = call_args[0][1]
+        timeout = call_args.kwargs.get("timeout")
+        self.assertIn("user_collection", cache_key)
+        self.assertIn("123", cache_key)
+        self.assertEqual(timeout, 604800)  # 1 week
+        self.assertEqual(cached_data, mock_data)
+        # Check result
+        self.assertEqual(result["success"], True)
+        self.assertEqual(result["userid"], 123)
+        self.assertEqual(result["entries_count"], 1)
+
+    @patch("core.scrapers.scrape_user_collection_api")
+    def test_scrape_user_collection_task_failure(self, mock_scrape: MagicMock) -> None:
+        """Test user collection scraping task failure."""
+        from core.exceptions import ScrapingError
+
+        mock_scrape.side_effect = ScrapingError("API error")
+
+        with self.assertRaises(ScrapingError):
+            tasks.scrape_user_collection_task(123)

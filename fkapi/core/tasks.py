@@ -78,3 +78,46 @@ def scrape_kit_task(slug: str, kit_id: str | None = None, use_proxy: bool = Fals
     except Exception as e:
         logger.error(f"Error in scrape_kit_task for slug {slug}: {str(e)}")
         return {"success": False, "slug": slug, "error": str(e)}
+
+
+@task_decorator
+def scrape_user_collection_task(userid: int) -> dict:
+    """
+    Celery task to scrape user collection from FootballKitArchive API.
+
+    Args:
+        userid: User ID from FootballKitArchive
+
+    Returns:
+        dict: Task result with success status and metadata
+
+    Raises:
+        Exception: If scraping fails
+    """
+    from django.core.cache import cache
+
+    from core.cache_utils import generate_cache_key
+    from core.scrapers import scrape_user_collection_api
+
+    try:
+        logger.info(f"Starting scrape_user_collection_task for userid: {userid}")
+
+        # Scrape collection data
+        data = scrape_user_collection_api(userid)
+
+        # Cache for 1 week (604800 seconds)
+        cache_key = generate_cache_key("user_collection", userid)
+        cache.set(cache_key, data, timeout=604800)
+
+        entries_count = len(data.get("entries", []))
+        logger.info(f"Successfully scraped and cached collection for userid: {userid} ({entries_count} entries)")
+
+        return {
+            "success": True,
+            "userid": userid,
+            "entries_count": entries_count,
+            "pages_scraped": data.get("pages_scraped", 0),
+        }
+    except Exception as e:
+        logger.error(f"Error scraping user collection for userid {userid}: {str(e)}")
+        raise

@@ -89,6 +89,7 @@ class KitJsonSchema(Schema):
 
 class ClubBulkSchema(Schema):
     """Reduced club schema for bulk responses."""
+
     name: str
     logo: str | None = None
     logo_dark: str | None = None
@@ -97,11 +98,13 @@ class ClubBulkSchema(Schema):
 
 class SeasonBulkSchema(Schema):
     """Reduced season schema for bulk responses."""
+
     year: str
 
 
 class BrandBulkSchema(Schema):
     """Reduced brand schema for bulk responses."""
+
     name: str
     logo: str | None = None
     logo_dark: str | None = None
@@ -109,6 +112,7 @@ class BrandBulkSchema(Schema):
 
 class KitBulkSchema(Schema):
     """Reduced kit schema for bulk responses."""
+
     name: str
     team: ClubBulkSchema
     season: SeasonBulkSchema

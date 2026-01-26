@@ -1,5 +1,7 @@
 """Tests for API endpoints."""
 
+from unittest.mock import patch
+
 from django.test import Client, TestCase
 
 from core.models import Brand, Club, Competition, Kit, Season, Type_K
@@ -349,3 +351,176 @@ class APITests(TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(len(data), 30)
+
+    @patch("core.tasks.scrape_user_collection_task")
+    @patch("core.cache_utils.generate_cache_key")
+    def test_scrape_user_collection_post_cached(self, mock_cache_key, mock_task):
+        """Test POST endpoint when data is already cached."""
+
+        from django.core.cache import cache
+
+        userid = 123
+        cache_key = f"user_collection_{userid}"
+        mock_cache_key.return_value = cache_key
+
+        cached_data = {
+            "success": True,
+            "entries": [{"id": i} for i in range(1, 25)],
+            "total_entries": 24,
+            "pages_scraped": 2,
+        }
+        cache.set(cache_key, cached_data, timeout=604800)
+
+        response = self.client.post(f"/api/user-collection/{userid}/scrape")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "cached")
+        self.assertEqual(len(data["data"]["entries"]), 24)
+        # Task should not be called if cached
+        mock_task.delay.assert_not_called()
+
+    @patch("core.tasks.scrape_user_collection_task")
+    @patch("core.cache_utils.generate_cache_key")
+    def test_scrape_user_collection_post_not_cached(self, mock_cache_key, mock_task):
+        """Test POST endpoint when data is not cached."""
+        from unittest.mock import MagicMock
+
+        from django.core.cache import cache
+
+        userid = 123
+        cache_key = f"user_collection_{userid}"
+        mock_cache_key.return_value = cache_key
+
+        # Clear cache
+        cache.delete(cache_key)
+
+        # Mock task
+        mock_task_instance = MagicMock()
+        mock_task_instance.id = "task-123"
+        mock_task.delay.return_value = mock_task_instance
+
+        response = self.client.post(f"/api/user-collection/{userid}/scrape")
+
+        self.assertEqual(response.status_code, 202)
+        data = response.json()
+        self.assertEqual(data["status"], "processing")
+        self.assertEqual(data["task_id"], "task-123")
+        mock_task.delay.assert_called_once_with(userid)
+
+    @patch("core.cache_utils.generate_cache_key")
+    def test_get_user_collection_success(self, mock_cache_key):
+        """Test GET endpoint with cached data."""
+        from django.core.cache import cache
+
+        userid = 123
+        cache_key = f"user_collection_{userid}"
+        mock_cache_key.return_value = cache_key
+
+        # Create test data with 25 entries
+        cached_data = {
+            "success": True,
+            "entries": [{"id": i, "kit": {"id": i * 10}} for i in range(1, 26)],
+            "total_entries": 25,
+            "pages_scraped": 2,
+        }
+        cache.set(cache_key, cached_data, timeout=604800)
+
+        # Test first page
+        response = self.client.get(f"/api/user-collection/{userid}", {"page": 1, "page_size": 10})
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "ready")
+        self.assertEqual(len(data["data"]["entries"]), 10)
+        self.assertEqual(data["pagination"]["current_page"], 1)
+        self.assertEqual(data["pagination"]["page_size"], 10)
+        self.assertEqual(data["pagination"]["total_count"], 25)
+        self.assertEqual(data["pagination"]["total_pages"], 3)
+
+        # Test second page
+        response = self.client.get(f"/api/user-collection/{userid}", {"page": 2, "page_size": 10})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data["data"]["entries"]), 10)
+        self.assertEqual(data["pagination"]["current_page"], 2)
+
+    @patch("core.cache_utils.generate_cache_key")
+    def test_get_user_collection_not_found(self, mock_cache_key):
+        """Test GET endpoint when data is not cached."""
+        from django.core.cache import cache
+
+        userid = 123
+        cache_key = f"user_collection_{userid}"
+        mock_cache_key.return_value = cache_key
+
+        # Clear cache
+        cache.delete(cache_key)
+
+        response = self.client.get(f"/api/user-collection/{userid}")
+
+        self.assertEqual(response.status_code, 404)
+        data = response.json()
+        self.assertEqual(data["status"], "not_found")
+        self.assertIn("scrape", data["message"].lower())
+
+    @patch("core.cache_utils.generate_cache_key")
+    def test_get_user_collection_pagination_defaults(self, mock_cache_key):
+        """Test GET endpoint with default pagination."""
+        from django.core.cache import cache
+
+        userid = 123
+        cache_key = f"user_collection_{userid}"
+        mock_cache_key.return_value = cache_key
+
+        cached_data = {
+            "success": True,
+            "entries": [{"id": i} for i in range(1, 21)],
+            "total_entries": 20,
+            "pages_scraped": 1,
+        }
+        cache.set(cache_key, cached_data, timeout=604800)
+
+        # No pagination params - should use defaults
+        response = self.client.get(f"/api/user-collection/{userid}")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["pagination"]["current_page"], 1)
+        self.assertEqual(data["pagination"]["page_size"], 20)  # Default
+
+    @patch("core.cache_utils.generate_cache_key")
+    def test_get_user_collection_pagination_validation(self, mock_cache_key):
+        """Test GET endpoint pagination validation."""
+        from django.core.cache import cache
+
+        userid = 123
+        cache_key = f"user_collection_{userid}"
+        mock_cache_key.return_value = cache_key
+
+        cached_data = {
+            "success": True,
+            "entries": [{"id": i} for i in range(1, 11)],
+            "total_entries": 10,
+            "pages_scraped": 1,
+        }
+        cache.set(cache_key, cached_data, timeout=604800)
+
+        # Test invalid page (page=0 is invalid per Query validation ge=1, should return 422)
+        response = self.client.get(f"/api/user-collection/{userid}", {"page": 0})
+        self.assertEqual(response.status_code, 422)  # Validation error
+
+        # Test page_size > 100 (should return 422 due to Query validation le=100)
+        response = self.client.get(f"/api/user-collection/{userid}", {"page_size": 200})
+        self.assertEqual(response.status_code, 422)  # Validation error
+
+        # Test page_size < 1 (should return 422 due to Query validation ge=1)
+        response = self.client.get(f"/api/user-collection/{userid}", {"page_size": 0})
+        self.assertEqual(response.status_code, 422)  # Validation error
+
+        # Test valid values work correctly
+        response = self.client.get(f"/api/user-collection/{userid}", {"page": 1, "page_size": 10})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["pagination"]["current_page"], 1)
+        self.assertEqual(data["pagination"]["page_size"], 10)

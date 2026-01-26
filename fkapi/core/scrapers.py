@@ -34,7 +34,7 @@ from core.exceptions import (
     RateLimitExceededError,
     ScrapingError,
 )
-from core.http import http_get
+from core.http import HTTP_DEFAULT_HEADERS, http_get
 from core.parsers import extract_fact_table, parse_kit_page
 from core.services.scraping_service import ScrapingService
 
@@ -1228,3 +1228,199 @@ def scrape_latest_pages(
     print(f"Pages failed: {failure_count}")
 
     return success_count, failure_count
+
+
+def scrape_user_collection_api(userid: int) -> dict:
+    """
+    Scrape user collection using the collection-feed.php API.
+
+    Args:
+        userid: User ID from FootballKitArchive
+
+    Returns:
+        dict: Complete collection data with all entries from all pages.
+              Structure matches the API response with all entries combined.
+
+    Raises:
+        ScrapingError: If the API request fails or returns invalid data
+        RateLimitExceededError: If rate limit is exceeded
+    """
+    import json
+
+    all_entries = []
+    page = 1
+    limit = 20
+
+    # Headers with English language to avoid format changes (GK → pt, etc.)
+    headers = {
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",  # IMPORTANT: English to avoid format changes
+        "Referer": f"https://www.footballkitarchive.com/collection/{userid}",
+        "User-Agent": HTTP_DEFAULT_HEADERS["User-Agent"],
+    }
+
+    logger.info(f"Starting to scrape user collection for userid: {userid}")
+    total_skipped = {"custom": 0, "purchase": 0, "gender": 0}
+
+    while True:
+        url = f"{BASE_URL}/api/collection-feed.php?limit={limit}&page={page}&sort=latest&userid={userid}"
+        logger.debug(f"Fetching page {page} from: {url}")
+
+        try:
+            # Use proxy rotator to avoid IP bans
+            response = http_get(url, headers=headers, use_proxy=True)
+            response.raise_for_status()
+
+            # Parse JSON response
+            try:
+                data = response.json()
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON response for page {page}: {str(e)}")
+                raise ScrapingError(f"Invalid JSON response from API: {str(e)}") from e
+
+            # Validate response structure
+            if not isinstance(data, dict):
+                raise ScrapingError("API response is not a dictionary")
+
+            if not data.get("success", False):
+                error_msg = data.get("error", "Unknown error")
+                logger.error(f"API returned success=false for page {page}: {error_msg}")
+                raise ScrapingError(f"API returned error: {error_msg}")
+
+            # Extract entries
+            entries = data.get("entries", [])
+            if not isinstance(entries, list):
+                raise ScrapingError("API response 'entries' is not a list")
+
+            # Filter and clean entries
+            filtered_entries = []
+            skipped_custom = 0
+
+            for entry in entries:
+                entry_id = entry.get("id", "unknown")
+
+                # ONLY skip entire entry if it has any custom fields that are not null
+                custom_fields = ["custom_team", "custom_type", "custom_season", "custom_league", "custom_brand"]
+                has_custom = any(entry.get(field) is not None for field in custom_fields)
+                if has_custom:
+                    skipped_custom += 1
+                    total_skipped["custom"] += 1
+                    found_custom = [f for f in custom_fields if entry.get(f) is not None]
+                    logger.debug(f"Skipping entry {entry_id} - has custom fields: {found_custom}")
+                    continue
+
+                # Clean entry: remove unwanted fields (purchase/value, gender, printing_type, user block)
+                # but KEEP the entry itself
+                cleaned_entry = _clean_collection_entry(entry)
+                filtered_entries.append(cleaned_entry)
+
+            # Log filtering statistics
+            if len(entries) > 0:
+                logger.info(
+                    f"Page {page} filtering: {len(entries)} total entries, "
+                    f"{skipped_custom} skipped (custom fields only), "
+                    f"{len(filtered_entries)} kept (unwanted fields removed from response)"
+                )
+
+                # If all entries were filtered, show example of why
+                if len(filtered_entries) == 0 and len(entries) > 0:
+                    sample_entry = entries[0]
+                    if any(
+                        sample_entry.get(f) is not None
+                        for f in ["custom_team", "custom_type", "custom_season", "custom_league", "custom_brand"]
+                    ):
+                        logger.warning(
+                            f"All entries on page {page} were filtered. Sample entry {sample_entry.get('id')} "
+                            f"was filtered because it has custom_* fields (not null)"
+                        )
+
+            all_entries.extend(filtered_entries)
+            logger.info(
+                f"Page {page}: Retrieved {len(entries)} entries, {skipped_custom} skipped (custom fields), "
+                f"{len(filtered_entries)} kept (total: {len(all_entries)})"
+            )
+
+            # Check if there are more pages
+            more_available = data.get("more_available", False)
+            if not more_available:
+                logger.info(f"No more pages available. Total entries: {len(all_entries)}")
+                break
+
+            page += 1
+            # Small delay between pages to avoid rate limiting
+            time.sleep(0.5)
+
+        except requests.exceptions.HTTPError as e:
+            if e.response and e.response.status_code == 403:
+                raise RateLimitExceededError("Rate limit exceeded while scraping user collection") from e
+            logger.error(f"HTTP error fetching page {page}: {str(e)}")
+            raise ScrapingError(f"HTTP error fetching page {page}: {str(e)}") from e
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Request error fetching page {page}: {str(e)}")
+            raise ScrapingError(f"Request error fetching page {page}: {str(e)}") from e
+
+    # Return complete response structure with all entries
+    result = {
+        "success": True,
+        "entries": all_entries,
+        "total_entries": len(all_entries),
+        "pages_scraped": page,
+    }
+
+    logger.info(
+        f"Successfully scraped {len(all_entries)} entries from {page} pages for userid: {userid}. "
+        f"Filtered out: {total_skipped['custom']} entries (had custom_* fields)"
+    )
+    return result
+
+
+def _clean_collection_entry(entry: dict) -> dict:
+    """
+    Clean a collection entry by removing unwanted fields.
+
+    Removes:
+    - From kit: sponsor_name, footyheadlines_url, credits, template, carry_over,
+      userid, added_at, updated_at, release_date, image_preview_url
+    - From entry: user block (repeated data), purchase/value fields, gender, printing_type
+    - Note: custom_* fields are not removed here because entries with custom_* (not null)
+      are already filtered out before this function is called
+
+    Args:
+        entry: Raw entry dictionary from API (already filtered for custom_*)
+
+    Returns:
+        dict: Cleaned entry with only wanted fields
+    """
+    cleaned = entry.copy()
+
+    # Remove user block (repeated data)
+    cleaned.pop("user", None)
+
+    # Remove purchase/value fields (remove from response, but keep the entry)
+    cleaned.pop("purchase_date", None)
+    cleaned.pop("purchase_price", None)
+    cleaned.pop("currency", None)
+    cleaned.pop("estimated_value", None)
+    cleaned.pop("value_currency", None)
+
+    # Remove gender and printing_type (remove from response, but keep the entry)
+    cleaned.pop("gender", None)
+    cleaned.pop("printing_type", None)
+
+    # Clean kit object if present
+    if "kit" in cleaned and isinstance(cleaned["kit"], dict):
+        kit = cleaned["kit"].copy()
+        # Remove unwanted kit fields (regardless of null or not)
+        kit.pop("sponsor_name", None)
+        kit.pop("footyheadlines_url", None)
+        kit.pop("credits", None)
+        kit.pop("template", None)
+        kit.pop("carry_over", None)
+        kit.pop("userid", None)
+        kit.pop("added_at", None)
+        kit.pop("updated_at", None)
+        kit.pop("release_date", None)
+        kit.pop("image_preview_url", None)
+        cleaned["kit"] = kit
+
+    return cleaned
