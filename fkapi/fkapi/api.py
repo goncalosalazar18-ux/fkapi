@@ -1886,7 +1886,7 @@ def scrape_user_collection(
     description="""
     Get a user's collection from cache with pagination.
 
-    If the collection is cached, returns paginated data (200 OK).
+    If the collection is cached, returns paginated data (200 OK) including user information.
     If not cached, returns 404 Not Found suggesting to call POST /api/user-collection/{userid}/scrape first.
 
     **Pagination:**
@@ -1894,8 +1894,12 @@ def scrape_user_collection(
     - `page_size` (int, default: 20, max: 100): Items per page (min: 1, max: 100)
 
     **Response Codes:**
-    - `200 OK`: Collection found in cache (paginated data)
+    - `200 OK`: Collection found in cache (paginated data with user info)
     - `404 Not Found`: Collection not found, suggest starting scraping first
+
+    **User Information:**
+    The response includes user information (name, image, twitter, instagram, description, points, etc.)
+    if available from the scraping process.
 
     **Cache:**
     Data is cached for 1 week (604800 seconds) after scraping.
@@ -1904,7 +1908,7 @@ def scrape_user_collection(
     **Force Re-scrape:**
     To force a fresh scrape with updated data format, use:
     POST /api/user-collection/{userid}/scrape?force=true
-    This will invalidate existing cache and scrape with enriched data (brand/club logos, etc.).
+    This will invalidate existing cache and scrape with enriched data (brand/club logos, user info, etc.).
     """,
     tags=["User Collection"],
 )
@@ -1955,6 +1959,10 @@ def get_user_collection(
             "total_entries": total_entries,
             "pages_scraped": cached_data.get("pages_scraped", 0),
         }
+
+        # Include user info if available
+        if "user" in cached_data:
+            paginated_data["user"] = cached_data["user"]
 
         # Build pagination info
         pagination_info = {

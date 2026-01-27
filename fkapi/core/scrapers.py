@@ -1230,6 +1230,70 @@ def scrape_latest_pages(
     return success_count, failure_count
 
 
+def scrape_user_info_api(userid: int) -> dict | None:
+    """
+    Scrape user information using the user.php API.
+
+    Args:
+        userid: User ID from FootballKitArchive
+
+    Returns:
+        dict | None: User information dict or None if request fails.
+                     Structure: {"id": int, "name": str, "image": str, ...}
+
+    Raises:
+        ScrapingError: If the API request fails or returns invalid data
+    """
+    import json
+
+    url = f"{BASE_URL}/api/user.php?id={userid}"
+    headers = {
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": f"https://www.footballkitarchive.com/collection/{userid}",
+        "User-Agent": HTTP_DEFAULT_HEADERS["User-Agent"],
+    }
+
+    logger.info(f"Fetching user info for userid: {userid}")
+
+    try:
+        response = http_get(url, headers=headers, use_proxy=True)
+        response.raise_for_status()
+
+        try:
+            data = response.json()
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON response for user info: {str(e)}")
+            return None
+
+        if not isinstance(data, dict):
+            logger.error("User API response is not a dictionary")
+            return None
+
+        if data.get("error") is not None:
+            error_msg = data.get("error", "Unknown error")
+            logger.warning(f"User API returned error: {error_msg}")
+            return None
+
+        user_data = data.get("user")
+        if not user_data:
+            logger.warning(f"No user data found in response for userid: {userid}")
+            return None
+
+        logger.info(f"Successfully fetched user info for userid: {userid}")
+        return user_data
+
+    except requests.exceptions.HTTPError as e:
+        if e.response and e.response.status_code == 403:
+            logger.warning(f"Rate limit or access denied for user info (userid: {userid})")
+        else:
+            logger.warning(f"HTTP error fetching user info: {str(e)}")
+        return None
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"Request error fetching user info: {str(e)}")
+        return None
+
+
 def scrape_user_collection_api(userid: int) -> dict:
     """
     Scrape user collection using the collection-feed.php API.
@@ -1261,6 +1325,8 @@ def scrape_user_collection_api(userid: int) -> dict:
 
     logger.info(f"Starting to scrape user collection for userid: {userid}")
     total_skipped = {"custom": 0, "purchase": 0, "gender": 0}
+
+    user_info = scrape_user_info_api(userid)
 
     while True:
         url = f"{BASE_URL}/api/collection-feed.php?limit={limit}&page={page}&sort=latest&userid={userid}"
@@ -1368,6 +1434,9 @@ def scrape_user_collection_api(userid: int) -> dict:
         "total_entries": len(all_entries),
         "pages_scraped": page,
     }
+
+    if user_info:
+        result["user"] = user_info
 
     logger.info(
         f"Successfully scraped {len(all_entries)} entries from {page} pages for userid: {userid}. "
