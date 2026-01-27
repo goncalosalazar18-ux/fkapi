@@ -239,6 +239,13 @@ SLOW_QUERY_THRESHOLD = float(os.getenv("SLOW_QUERY_THRESHOLD", "0.5"))
 SLOW_RESPONSE_THRESHOLD = float(os.getenv("SLOW_RESPONSE_THRESHOLD", "1.0"))
 LOG_DB_QUERIES = os.getenv("LOG_DB_QUERIES", "False").lower() in ("1", "true", "yes")
 
+# API Rate Limit Whitelist
+_api_rate_limit_whitelist_env = os.getenv("API_RATE_LIMIT_WHITELIST", "")
+if _api_rate_limit_whitelist_env:
+    API_RATE_LIMIT_WHITELIST = [ip.strip() for ip in _api_rate_limit_whitelist_env.split(",") if ip.strip()]
+else:
+    API_RATE_LIMIT_WHITELIST = []
+
 # Logging Configuration
 LOGS_DIR = BASE_DIR / "logs"
 LOGS_DIR.mkdir(exist_ok=True)

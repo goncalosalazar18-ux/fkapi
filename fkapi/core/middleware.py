@@ -38,6 +38,12 @@ def _get_limit_from_settings():
     return max_requests, prefix
 
 
+def _is_ip_whitelisted(ip: str) -> bool:
+    """Check if an IP address is in the rate limit whitelist."""
+    whitelist = getattr(settings, "API_RATE_LIMIT_WHITELIST", [])
+    return ip in whitelist if whitelist else False
+
+
 def rate_limit_middleware(get_response):
     """
     Middleware to implement rate limiting for API endpoints.
@@ -46,24 +52,24 @@ def rate_limit_middleware(get_response):
     def middleware(request):
         if request.path.startswith("/api/"):
             ip = _get_client_ip(request)
+            
+            if _is_ip_whitelisted(ip):
+                response = get_response(request)
+                return response
+            
             max_requests, prefix = _get_limit_from_settings()
 
-            # Create cache key
             cache_key = f"{prefix}_{ip}"
 
-            # Get current request count and timestamp
             request_data = cache.get(cache_key, {"count": 0, "timestamp": time.time()})
 
-            # Reset count if an hour has passed
             current_time = time.time()
-            if current_time - request_data["timestamp"] > 3600:  # 3600 seconds = 1 hour
+            if current_time - request_data["timestamp"] > 3600:
                 request_data = {"count": 0, "timestamp": current_time}
 
-            # Check if rate limit is exceeded
             if request_data["count"] >= max_requests:
                 return HttpResponseForbidden("Rate limit exceeded. Please try again later.")
 
-            # Update request count
             request_data["count"] += 1
             cache.set(cache_key, request_data, 3600)
 
