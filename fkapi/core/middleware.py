@@ -52,11 +52,11 @@ def rate_limit_middleware(get_response):
     def middleware(request):
         if request.path.startswith("/api/"):
             ip = _get_client_ip(request)
-            
+
             if _is_ip_whitelisted(ip):
                 response = get_response(request)
                 return response
-            
+
             max_requests, prefix = _get_limit_from_settings()
 
             cache_key = f"{prefix}_{ip}"

@@ -1452,6 +1452,20 @@ class ScraperTests(TestCase):
     @patch("core.scrapers.http_get")
     def test_scrape_user_collection_api_pagination(self, mock_http_get, mock_sleep):
         """Test pagination handling in scrape_user_collection_api."""
+        # Mock user info API response
+        user_info_response = Mock()
+        user_info_response.status_code = 200
+        user_info_response.json.return_value = {
+            "user": {
+                "id": 123,
+                "name": "test_user",
+                "image": "/static/profilepic/default.jpg",
+                "points": 0,
+            },
+            "error": None,
+        }
+        user_info_response.raise_for_status = Mock()
+
         # Mock first page
         page1_response = Mock()
         page1_response.status_code = 200
@@ -1472,14 +1486,14 @@ class ScraperTests(TestCase):
         }
         page2_response.raise_for_status = Mock()
 
-        mock_http_get.side_effect = [page1_response, page2_response]
+        mock_http_get.side_effect = [user_info_response, page1_response, page2_response]
 
         result = scrape_user_collection_api(123)
 
         self.assertEqual(result["total_entries"], 24)
         self.assertEqual(result["pages_scraped"], 2)
         self.assertEqual(len(result["entries"]), 24)
-        self.assertEqual(mock_http_get.call_count, 2)
+        self.assertEqual(mock_http_get.call_count, 3)
 
     @patch("core.scrapers.http_get")
     def test_scrape_user_collection_api_filters_custom_fields(self, mock_http_get):
