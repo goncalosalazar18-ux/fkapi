@@ -46,8 +46,8 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - ENABLE_CELERY=${ENABLE_CELERY:-True}
       # WARNING: DJANGO_SECRET_KEY should be set in .env file for production
-      # This fallback is ONLY for local development
-      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-insecure-dev-key-change-in-production}
+      # Leave unset for local dev: Django will use a random key when DEBUG=True
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-}
       - DJANGO_DEBUG=${DJANGO_DEBUG:-True}
       - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
     depends_on:
@@ -72,8 +72,8 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - ENABLE_CELERY=${ENABLE_CELERY:-True}
       # WARNING: DJANGO_SECRET_KEY should be set in .env file for production
-      # This fallback is ONLY for local development
-      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-insecure-dev-key-change-in-production}
+      # Leave unset for local dev: Django will use a random key when DEBUG=True
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-}
       - DJANGO_DEBUG=${DJANGO_DEBUG:-True}
     depends_on:
       db:
@@ -103,8 +103,8 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - ENABLE_CELERY=${ENABLE_CELERY:-True}
       # WARNING: DJANGO_SECRET_KEY should be set in .env file for production
-      # This fallback is ONLY for local development
-      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-insecure-dev-key-change-in-production}
+      # Leave unset for local dev: Django will use a random key when DEBUG=True
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-}
       - DJANGO_DEBUG=${DJANGO_DEBUG:-True}
     depends_on:
       db:

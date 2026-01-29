@@ -16,6 +16,7 @@ from ninja import NinjaAPI, Path, Query, Schema
 from ninja_apikey.security import APIKeyAuth
 
 from core.cache_utils import generate_cache_key
+from core.constants import DEFAULT_LOGO_URL
 
 # Local imports
 from core.exceptions import (
@@ -45,6 +46,9 @@ from core.serializers import (
 )
 
 logger = logging.getLogger(__name__)
+
+_QUERY_PAGE_DESC = "Page number"
+_QUERY_PAGE_SIZE_DESC = "Items per page"
 
 
 # Create a simple serializer for the search results
@@ -569,8 +573,8 @@ def get_club_kits(
     request: HttpRequest,
     club_id: int = Path(..., description="Club ID", example=1),
     season: int | None = Query(None, description="Filter by season ID", example=1),
-    page: int = Query(1, description="Page number", ge=1),
-    page_size: int = Query(20, description="Items per page", ge=1, le=100),
+    page: int = Query(1, description=_QUERY_PAGE_DESC, ge=1),
+    page_size: int = Query(20, description=_QUERY_PAGE_SIZE_DESC, ge=1, le=100),
 ) -> list[KitSerializer]:
     """
     Get all kits for a specific club.
@@ -741,13 +745,12 @@ def search_competitions(
         _search_filter("name", keyword) | _search_filter("slug", keyword)
     ).order_by("id")[:10]
 
-    competition_logo_default = "https://www.footballkitarchive.com/static/logos/not_found.png"
     result = [
         CompetitionJsonSchema(
             id=c.id,
             name=c.name,
             slug=c.slug,
-            logo=c.logo if c.logo else competition_logo_default,
+            logo=c.logo if c.logo else DEFAULT_LOGO_URL,
             logo_dark=getattr(c, "logo_dark", None) if hasattr(c, "logo_dark") else None,
             country=c.country.code if hasattr(c, "country") and c.country else None,
         )
@@ -822,8 +825,8 @@ _QUERY_FIRST_YEAR = Query(None, description="Filter by season first year", examp
 _QUERY_SECOND_YEAR = Query(
     None, description="Filter by season second year (use with first_year for exact match)", example=2025
 )
-_QUERY_PAGE = Query(1, description="Page number", ge=1)
-_QUERY_PAGE_SIZE = Query(20, description="Items per page", ge=1, le=100)
+_QUERY_PAGE = Query(1, description=_QUERY_PAGE_DESC, ge=1)
+_QUERY_PAGE_SIZE = Query(20, description=_QUERY_PAGE_SIZE_DESC, ge=1, le=100)
 
 
 @api.get(
@@ -1089,8 +1092,6 @@ def search_seasons(
 
     if cached_result is not None:
         return cached_result
-
-    year_query = Q()
 
     if keyword.endswith("-"):
         year_prefix = keyword[:-1]
@@ -1472,7 +1473,6 @@ def get_kit(request: HttpRequest, kit_id: int = Path(..., description="Kit ID", 
         if "not found" in str(e).lower() or "does not exist" in str(e).lower():
             raise KitNotFoundError(f"kit-{kit_id}", f"Kit with ID {kit_id} not found") from e
         raise
-    competition_logo_default = "https://www.footballkitarchive.com/static/logos/not_found.png"
 
     # Prepare primary color if available
     primary_color = None
@@ -1512,7 +1512,7 @@ def get_kit(request: HttpRequest, kit_id: int = Path(..., description="Kit ID", 
                 id=c.id,
                 name=c.name,
                 slug=c.slug,
-                logo=c.logo if c.logo else competition_logo_default,
+                logo=c.logo if c.logo else DEFAULT_LOGO_URL,
                 logo_dark=c.logo_dark,
                 country=c.country.code if hasattr(c, "country") and c.country else None,
             )
@@ -1610,8 +1610,8 @@ def get_kit_json_legacy(
 )
 def get_random_kits(
     request: HttpRequest,
-    page: int = Query(1, description="Page number", ge=1),
-    page_size: int = Query(20, description="Items per page", ge=1, le=100),
+    page: int = Query(1, description=_QUERY_PAGE_DESC, ge=1),
+    page_size: int = Query(20, description=_QUERY_PAGE_SIZE_DESC, ge=1, le=100),
 ) -> dict[str, Any]:
     """
     Get random kits with pagination.
@@ -1639,6 +1639,13 @@ def get_random_kits(
             if secondary_colors:
                 secondary_color_name = secondary_colors[0].name
 
+        if kit.primary_color and secondary_color_name:
+            colors_display = f"{kit.primary_color.name} / {secondary_color_name}"
+        elif kit.primary_color:
+            colors_display = kit.primary_color.name
+        else:
+            colors_display = None
+
         kits_data.append(
             {
                 "id": kit.id,
@@ -1650,9 +1657,7 @@ def get_random_kits(
                 "type_name": kit.type.name if kit.type else None,
                 "brand_name": kit.brand.name if kit.brand else None,
                 "rating": float(kit.rating) if kit.rating else None,
-                "colors": f"{kit.primary_color.name} / {secondary_color_name}"
-                if kit.primary_color and secondary_color_name
-                else (kit.primary_color.name if kit.primary_color else None),
+                "colors": colors_display,
                 "design": kit.design,
             }
         )
@@ -1714,8 +1719,8 @@ def get_random_kits(
 )
 def get_random_clubs(
     request: HttpRequest,
-    page: int = Query(1, description="Page number", ge=1),
-    page_size: int = Query(20, description="Items per page", ge=1, le=100),
+    page: int = Query(1, description=_QUERY_PAGE_DESC, ge=1),
+    page_size: int = Query(20, description=_QUERY_PAGE_SIZE_DESC, ge=1, le=100),
 ) -> dict[str, Any]:
     """
     Get random clubs with pagination.
@@ -1728,7 +1733,7 @@ def get_random_clubs(
         # Get clubs that have logos and exclude default logo
         clubs = (
             Club.objects.filter(logo__isnull=False, logo__gt="")
-            .exclude(logo="https://www.footballkitarchive.com/static/logos/not_found.png")
+            .exclude(logo=DEFAULT_LOGO_URL)
             .annotate(kit_count=Count("kit"))
             .order_by("?")
         )

@@ -21,9 +21,9 @@ fi
 echo "Checking Redis connection..."
 python -c "import redis; r = redis.Redis(host='localhost', port=6379); r.ping(); print('Redis OK!')" 2>/dev/null
 if [ $? -ne 0 ]; then
-    echo "ERROR: Redis is not running!"
-    echo "Please install and start Redis first."
-    echo "See docs/CELERY_SETUP.md for instructions"
+    echo "ERROR: Redis is not running!" >&2
+    echo "Please install and start Redis first." >&2
+    echo "See docs/CELERY_SETUP.md for instructions" >&2
     exit 1
 fi
 

@@ -17,23 +17,23 @@ from .models import Club, Competition
 
 def assign_countries(request: HttpRequest) -> HttpResponse:
     """
-    Vista para asignar países a las competiciones.
-    Ordena las competiciones por la cantidad de kits relacionados.
+    View to assign countries to competitions.
+    Orders competitions by the number of related kits.
     """
-    # Obtener todas las competiciones ordenadas por cantidad de kits
+    # Get all competitions ordered by kit count (descending)
     competitions = (
         Competition.objects.filter(country__isnull=True).annotate(kit_count=Count("kit")).order_by("-kit_count")
     )
 
-    # Paginación
-    paginator = Paginator(competitions, 20)  # Mostrar 20 competiciones por página
+    # Pagination
+    paginator = Paginator(competitions, 20)  # Show 20 competitions per page
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
 
-    # Obtener la lista de países
+    # Get list of countries
     country_list = list(countries)
 
-    # Procesar el formulario si es una solicitud POST
+    # Process form on POST request
     if request.method == "POST":
         competition_id = request.POST.get("competition_id")
         country_code = request.POST.get("country")
@@ -42,7 +42,7 @@ def assign_countries(request: HttpRequest) -> HttpResponse:
             competition = Competition.objects.get(id=competition_id)
             competition.country = country_code
             competition.save()
-            messages.success(request, f"País asignado correctamente a {competition.name}")
+            messages.success(request, f"Country assigned successfully to {competition.name}")
             return redirect("assign_countries")
 
     return render(
@@ -57,7 +57,7 @@ def assign_countries(request: HttpRequest) -> HttpResponse:
 
 def update_competition_country(request: HttpRequest) -> JsonResponse:
     """
-    Vista para actualizar el país de una competición mediante AJAX.
+    View to update the country of a competition via AJAX.
     """
     if request.method == "POST":
         competition_id = request.POST.get("competition_id")
@@ -70,20 +70,20 @@ def update_competition_country(request: HttpRequest) -> JsonResponse:
                 competition.save()
                 return JsonResponse({"status": "success"})
             except Competition.DoesNotExist:
-                return JsonResponse({"status": "error", "message": "Competición no encontrada"})
+                return JsonResponse({"status": "error", "message": "Competition not found"})
 
-    return JsonResponse({"status": "error", "message": "Método no permitido"})
+    return JsonResponse({"status": "error", "message": "Method not allowed"})
 
 
 def propagate_countries(request: HttpRequest) -> HttpResponse:
     """
-    Vista para propagar países de competiciones a clubes.
+    View to propagate competition countries to clubs.
     """
-    # Obtener la lista de países
+    # Get list of countries
     country_list = list(countries)
 
     if request.method == "POST":
-        # Resolver un conflicto específico
+        # Resolve a specific conflict
         if "resolve_conflict" in request.POST:
             club_id = request.POST.get("club_id")
             country_code = request.POST.get("country_code")
@@ -93,16 +93,16 @@ def propagate_countries(request: HttpRequest) -> HttpResponse:
                 club.country = country_code
                 club.save()
 
-                # Guardar esta resolución para evitar que aparezca de nuevo
-                # Usamos una sesión para almacenar los conflictos resueltos
+                # Save this resolution to prevent it from appearing again
+                # Use session to store resolved conflicts
                 resolved_conflicts = request.session.get("resolved_conflicts", {})
                 resolved_conflicts[club_id] = country_code
                 request.session["resolved_conflicts"] = resolved_conflicts
 
-                messages.success(request, f"País actualizado para {club.name}")
+                messages.success(request, f"Country updated for {club.name}")
                 return redirect("assign_countries")
 
-        # Resolver todos los conflictos con una estrategia
+        # Resolve all conflicts with a strategy
         elif "resolve_all_conflicts" in request.POST:
             strategy = request.POST.get("strategy", "keep_existing")
             conflicts = request.session.get("current_conflicts", [])
@@ -118,69 +118,65 @@ def propagate_countries(request: HttpRequest) -> HttpResponse:
                 try:
                     club = Club.objects.get(id=club_id)
 
-                    # Aplicar la estrategia seleccionada
+                    # Apply selected strategy
                     if strategy == "keep_existing":
-                        # No cambiar nada, pero marcar como resuelto
+                        # Don't change, just mark as resolved
                         country_code = existing_country
                     else:  # use_new
                         club.country = new_country
                         club.save()
                         country_code = new_country
 
-                    # Marcar como resuelto
+                    # Mark as resolved
                     resolved_conflicts[str(club_id)] = country_code
                     resolved_count += 1
 
                 except Exception as e:
-                    messages.error(request, f"Error al resolver conflicto para club {club_id}: {str(e)}")
+                    messages.error(request, f"Error resolving conflict for club {club_id}: {str(e)}")
 
-            # Guardar los conflictos resueltos en la sesión
+            # Save resolved conflicts in session
             request.session["resolved_conflicts"] = resolved_conflicts
 
-            messages.success(request, f"Se han resuelto {resolved_count} conflictos")
+            messages.success(request, f"{resolved_count} conflicts have been resolved")
             return redirect("assign_countries")
 
-        # Propagar países de competiciones a clubes
+        # Propagate competition countries to clubs
         else:
-            # Obtener todas las competiciones con país asignado
-            # No usar select_related para country porque es un CountryField, no una relación
+            # Get all competitions with a country assigned
             competitions_with_country = Competition.objects.filter(country__isnull=False)
 
-            # Diccionario para almacenar el país más frecuente para cada club
+            # Dict to store the most frequent country for each club
             club_countries = {}
             club_competitions = {}
 
-            # Para cada competición, obtener sus clubes
+            # For each competition, get its clubs
             for comp in competitions_with_country:
-                # Obtener todos los clubes que participan en esta competición
                 clubs = Club.objects.filter(kit__competition=comp).distinct()
 
                 for club in clubs:
-                    # Si el club ya tiene un país asignado, saltarlo
                     if club.id not in club_countries:
                         club_countries[club.id] = {}
                         club_competitions[club.id] = {}
 
-                    # Incrementar el contador para este país
+                    # Increment country counter
                     country_code = comp.country.code
                     club_countries[club.id][country_code] = club_countries[club.id].get(country_code, 0) + 1
 
-                    # Guardar la competición para referencia
+                    # Store competition for reference
                     if country_code not in club_competitions[club.id]:
                         club_competitions[club.id][country_code] = []
                     club_competitions[club.id][country_code].append({"id": comp.id, "name": comp.name})
 
-            # Determinar el país más frecuente para cada club
+            # Determine most frequent country for each club
             conflicts = []
             updated_count = 0
             resolved_conflicts = request.session.get("resolved_conflicts", {})
 
             for club_id, country_counts in club_countries.items():
-                # Obtener el club
                 try:
                     club = Club.objects.get(id=club_id)
 
-                    # Si este conflicto ya fue resuelto, aplicar la resolución guardada
+                    # If this conflict was already resolved, apply the saved resolution
                     if str(club_id) in resolved_conflicts:
                         if club.country is None or club.country.code != resolved_conflicts[str(club_id)]:
                             club.country = resolved_conflicts[str(club_id)]
@@ -188,12 +184,11 @@ def propagate_countries(request: HttpRequest) -> HttpResponse:
                             updated_count += 1
                         continue
 
-                    # Encontrar el país más frecuente
+                    # Find most common country
                     most_common_country = max(country_counts.items(), key=lambda x: x[1])[0]
 
-                    # Si el club ya tiene un país asignado y es diferente, registrar conflicto
+                    # If the club already has a country assigned and it is different, register conflict
                     if club.country and club.country.code != most_common_country:
-                        # Obtener la competición de referencia
                         comp_ref = club_competitions[club_id][most_common_country][0]
 
                         conflicts.append(
@@ -208,7 +203,7 @@ def propagate_countries(request: HttpRequest) -> HttpResponse:
                                 "competition_name": comp_ref["name"],
                             }
                         )
-                    # Si no tiene país o es el mismo, actualizarlo
+                    # If no country assigned or is the same, update it
                     elif not club.country or club.country.code == most_common_country:
                         club.country = most_common_country
                         club.save()
@@ -217,10 +212,10 @@ def propagate_countries(request: HttpRequest) -> HttpResponse:
                 except Club.DoesNotExist:
                     continue
 
-            # Guardar los conflictos actuales en la sesión
+            # Save current conflicts in session
             request.session["current_conflicts"] = conflicts
 
-            # Si hay conflictos, mostrar la página de resolución
+            # If there are conflicts, show the conflict resolution page
             if conflicts:
                 return render(
                     request,
@@ -233,24 +228,24 @@ def propagate_countries(request: HttpRequest) -> HttpResponse:
                     },
                 )
 
-            messages.success(request, f"Se han actualizado {updated_count} clubes con países de sus competiciones")
+            messages.success(request, f"{updated_count} clubs updated with competition countries")
             return redirect("assign_countries")
 
-    # Si es GET, redirigir a la página de asignación de países
+    # If GET, redirect to country assignment page
     return redirect("assign_countries")
 
 
 def competition_clubs(request: HttpRequest, competition_id: int) -> HttpResponse:
     """
-    Vista para mostrar los clubes relacionados con una competición específica.
+    View to show clubs related to a specific competition.
     """
     competition = get_object_or_404(Competition, id=competition_id)
 
-    # Obtener todos los clubes que tienen kits en esta competición
+    # Get all clubs with kits in this competition
     clubs = Club.objects.filter(kit__competition=competition).annotate(kit_count=Count("kit")).order_by("-kit_count")
 
-    # Paginación
-    paginator = Paginator(clubs, 50)  # Mostrar 50 clubes por página
+    # Pagination
+    paginator = Paginator(clubs, 50)  # Show 50 clubs per page
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
 
@@ -267,41 +262,41 @@ def competition_clubs(request: HttpRequest, competition_id: int) -> HttpResponse
 
 def review_country_assignments(request: HttpRequest) -> HttpResponse:
     """
-    Vista para revisar las asignaciones de países a equipos.
-    Busca automáticamente equipos que puedan ser selecciones nacionales basándose en el nombre del país.
+    View to review country assignments for clubs.
+    Automatically looks for clubs that might be national teams based on the country name.
     """
-    # Obtener la lista de países
+    # Get list of countries
     country_list = list(countries)
 
-    # Inicializar variables
+    # Initialize variables
     selected_country = None
     clubs = []
     search_results = {}
 
-    # Si se ha seleccionado un país específico
+    # If a specific country is selected
     if request.method == "GET" and "country" in request.GET:
         selected_country = request.GET.get("country")
         if selected_country:
-            # Obtener todos los clubes con ese país asignado
+            # Get all clubs with that country assigned
             clubs = (
                 Club.objects.filter(country=selected_country).annotate(kit_count=Count("kit")).order_by("-kit_count")
             )
 
-    # Si se está procesando una revisión
+    # Processing a review
     if request.method == "POST":
         if "approve_all" in request.POST:
-            # No hacemos nada, ya que por defecto están aprobados
-            messages.success(request, "Todas las asignaciones han sido aprobadas")
+            # Do nothing, by default all are approved
+            messages.success(request, "All assignments have been approved")
             return redirect("review_country_assignments")
 
         if "reject_clubs" in request.POST:
             club_ids = request.POST.getlist("reject_clubs")
             if club_ids:
-                # Limpiar el país de los clubes rechazados
+                # Clear country from rejected clubs
                 Club.objects.filter(id__in=club_ids).update(country=None)
-                messages.success(request, f"Se han rechazado {len(club_ids)} asignaciones de país")
+                messages.success(request, f"{len(club_ids)} country assignments have been rejected")
 
-                # Redirigir a la misma página con el país seleccionado
+                # Redirect to same page with selected country
                 country = request.POST.get("selected_country")
                 if country:
                     return redirect(f"{request.path}?country={country}")
@@ -312,86 +307,80 @@ def review_country_assignments(request: HttpRequest) -> HttpResponse:
             country_code = request.POST.get("country_code")
 
             if club_ids and country_code:
-                # Asignar el país a los clubes seleccionados
+                # Assign country to selected clubs
                 Club.objects.filter(id__in=club_ids).update(country=country_code)
                 country_name = dict(countries)[country_code]
-                messages.success(request, f"Se ha asignado {country_name} a {len(club_ids)} equipos")
+                messages.success(request, f"{country_name} has been assigned to {len(club_ids)} clubs")
                 return redirect("review_country_assignments")
 
         if "assign_all_countries" in request.POST:
-            # Asignar todos los países a los equipos seleccionados
+            # Assign countries to all selected clubs automatically
             total_assigned = 0
             countries_assigned = []
 
             for country_code, country_name in country_list:
-                # Buscar clubes que contengan el nombre del país y no tengan país asignado
-                # Primero buscamos coincidencias exactas (nombre del país completo)
+                # Find clubs whose name matches the country
                 exact_matches = Club.objects.filter(name__iexact=country_name, country__isnull=True)
-
-                # Luego buscamos coincidencias que contengan el nombre del país
-                # Excluimos clubes que ya tienen país asignado
                 partial_matches = Club.objects.filter(name__icontains=country_name, country__isnull=True).exclude(
                     id__in=exact_matches.values_list("id", flat=True)
                 )
 
-                # Asignar el país a los clubes con coincidencia exacta
+                # Assign the country to exactly matching clubs
                 if exact_matches.exists():
                     exact_matches.update(country=country_code)
                     total_assigned += exact_matches.count()
-                    countries_assigned.append(f"{country_name} ({exact_matches.count()} exactos)")
+                    countries_assigned.append(f"{country_name} ({exact_matches.count()} exact)")
 
-                # Asignar el país a los clubes con coincidencia parcial
+                # Assign the country to partially matching clubs
                 if partial_matches.exists():
                     partial_matches.update(country=country_code)
                     total_assigned += partial_matches.count()
                     if f"{country_name}" in countries_assigned:
-                        # Actualizar el contador si ya existe
                         idx = countries_assigned.index(f"{country_name}")
                         countries_assigned[idx] = (
-                            f"{country_name} ({exact_matches.count()} exactos, {partial_matches.count()} parciales)"
+                            f"{country_name} ({exact_matches.count()} exact, {partial_matches.count()} partial)"
                         )
                     else:
-                        countries_assigned.append(f"{country_name} ({partial_matches.count()} parciales)")
+                        countries_assigned.append(f"{country_name} ({partial_matches.count()} partial)")
 
             if total_assigned > 0:
                 countries_text = ", ".join(countries_assigned[:5])
                 if len(countries_assigned) > 5:
-                    countries_text += f" y {len(countries_assigned) - 5} más"
+                    countries_text += f" and {len(countries_assigned) - 5} more"
 
                 messages.success(
                     request,
-                    f"Se han asignado países a {total_assigned} equipos automáticamente. Países asignados: {countries_text}",
+                    f"Countries assigned to {total_assigned} clubs automatically. Countries: {countries_text}",
                 )
             else:
                 messages.info(
-                    request, "No se encontraron equipos sin país asignado que coincidan con nombres de países."
+                    request, "No clubs without a country that match country names were found."
                 )
 
             return redirect("review_country_assignments")
 
-    # Buscar automáticamente equipos que puedan ser selecciones nacionales
+    # Automatically search for clubs that may be national teams
     if not selected_country:
         search_results = {}
 
         for country_code, country_name in country_list:
-            # Buscar clubes que contengan el nombre del país
-            country_clubs = (
+            clubs_in_country = (
                 Club.objects.filter(name__icontains=country_name)
                 .annotate(kit_count=Count("kit"))
                 .order_by("-kit_count")
             )
 
-            # Si hay resultados, guardarlos
-            if country_clubs.exists():
+            # Store results if any
+            if clubs_in_country.exists():
                 search_results[country_code] = {
                     "name": country_name,
-                    "clubs": country_clubs,
-                    "count": country_clubs.count(),
+                    "clubs": clubs_in_country,
+                    "count": clubs_in_country.count(),
                 }
 
-    # Paginación para el país seleccionado
+    # Pagination for selected country
     if selected_country:
-        paginator = Paginator(clubs, 50)  # Mostrar 50 clubes por página
+        paginator = Paginator(clubs, 50)  # Show 50 clubs per page
         page_number = request.GET.get("page")
         page_obj = paginator.get_page(page_number)
     else:
@@ -413,7 +402,7 @@ def review_country_assignments(request: HttpRequest) -> HttpResponse:
 @csrf_exempt
 def get_club_competitions(request: HttpRequest) -> JsonResponse:
     """
-    Vista para obtener las competiciones de un club mediante AJAX.
+    View to get a club's competitions via AJAX.
     """
     if request.method == "GET":
         club_id = request.GET.get("club_id")
@@ -422,7 +411,7 @@ def get_club_competitions(request: HttpRequest) -> JsonResponse:
             try:
                 club = Club.objects.get(id=club_id)
 
-                # Obtener las competiciones del club
+                # Get competitions for the club
                 competitions = (
                     Competition.objects.filter(kit__team=club)
                     .annotate(kit_count=Count("id"))
@@ -430,7 +419,7 @@ def get_club_competitions(request: HttpRequest) -> JsonResponse:
                     .distinct()
                 )
 
-                # Formatear las competiciones para la respuesta JSON
+                # Format competitions for JSON response
                 competitions_data = []
                 for competition in competitions:
                     competition_data = {
@@ -448,25 +437,23 @@ def get_club_competitions(request: HttpRequest) -> JsonResponse:
 
                 return JsonResponse({"status": "success", "competitions": competitions_data})
             except Club.DoesNotExist:
-                return JsonResponse({"status": "error", "message": "Club no encontrado"})
+                return JsonResponse({"status": "error", "message": "Club not found"})
 
-    return JsonResponse({"status": "error", "message": "Método no permitido"})
+    return JsonResponse({"status": "error", "message": "Method not allowed"})
 
 
-# Añadir la nueva vista para sugerir países a competiciones
 def suggest_competition_countries(request: HttpRequest) -> JsonResponse:
     """
-    Vista para sugerir y asignar países a competiciones basándose en los países
-    de los equipos que participan en ellas.
+    View to suggest/assign countries to competitions based on the countries of the clubs participating in them.
     """
-    # Parámetros de la solicitud
+    # Request parameters
     min_clubs = int(request.GET.get("min_clubs", 3))
     min_percentage = float(request.GET.get("min_percentage", 65.0))
     only_without_country = request.GET.get("only_without_country", "true") == "true"
     exclude_international = request.GET.get("exclude_international", "true") == "true"
     page_number = request.GET.get("page", 1)
 
-    # Palabras clave para identificar competiciones internacionales
+    # Keywords to detect international competitions
     international_keywords = [
         "champions",
         "copa",
@@ -493,15 +480,15 @@ def suggest_competition_countries(request: HttpRequest) -> JsonResponse:
         "world cup",
     ]
 
-    # Países que se separaron históricamente
+    # Historical countries
     historical_countries = {
-        "SU": "Unión Soviética",
+        "SU": "Soviet Union",
         "YU": "Yugoslavia",
-        "CS": "Checoslovaquia",
-        "DD": "Alemania Oriental",
+        "CS": "Czechoslovakia",
+        "DD": "East Germany",
     }
 
-    # Procesar asignaciones si es una solicitud POST
+    # Process assignment (POST)
     if request.method == "POST":
         if "assign_country" in request.POST:
             competition_id = request.POST.get("competition_id")
@@ -512,11 +499,10 @@ def suggest_competition_countries(request: HttpRequest) -> JsonResponse:
                     competition = Competition.objects.get(id=competition_id)
                     competition.country = country_code
                     competition.save()
-                    messages.success(request, f"País {dict(countries)[country_code]} asignado a {competition.name}")
+                    messages.success(request, f"Country {dict(countries)[country_code]} assigned to {competition.name}")
                 except Exception as e:
-                    messages.error(request, f"Error al asignar país: {str(e)}")
+                    messages.error(request, f"Error assigning country: {str(e)}")
 
-            # Redirigir a la misma página para evitar reenvío del formulario
             return redirect("suggest_competition_countries")
 
         elif "assign_selected" in request.POST:
@@ -533,16 +519,16 @@ def suggest_competition_countries(request: HttpRequest) -> JsonResponse:
                             competition.save()
                             assigned_count += 1
                         except Exception as e:
-                            messages.error(request, f"Error al asignar país a competición {comp_id}: {str(e)}")
+                            messages.error(request, f"Error assigning country to competition {comp_id}: {str(e)}")
 
                 if assigned_count > 0:
-                    messages.success(request, f"Países asignados a {assigned_count} competiciones")
+                    messages.success(request, f"Countries assigned to {assigned_count} competitions")
                 else:
-                    messages.warning(request, "No se asignaron países a ninguna competición")
+                    messages.warning(request, "No countries were assigned to any competitions")
             else:
-                messages.warning(request, "No se seleccionaron competiciones")
+                messages.warning(request, "No competitions were selected")
 
-            # Redirigir a la misma página con los mismos parámetros de filtro
+            # Redirect to same page with filter parameters
             params = {}
             if min_clubs != 3:
                 params["min_clubs"] = min_clubs
@@ -557,7 +543,7 @@ def suggest_competition_countries(request: HttpRequest) -> JsonResponse:
 
             return redirect(f"{reverse('suggest_competition_countries')}?{urlencode(params)}")
 
-    # Obtener todas las competiciones con anotaciones
+    # Get competitions with annotations
     query = Competition.objects.annotate(
         club_count=Count("kit__team", distinct=True),
         clubs_with_country=Count("kit__team", distinct=True, filter=Q(kit__team__country__isnull=False)),
@@ -566,46 +552,35 @@ def suggest_competition_countries(request: HttpRequest) -> JsonResponse:
     if only_without_country:
         query = query.filter(country__isnull=True)
 
-    # Ordenar por número de equipos (descendente)
     competitions = query.order_by("-club_count")
 
-    # Preparar los resultados
     results = []
 
     for comp in competitions:
-        # Saltarse competiciones sin equipos
         if comp.club_count == 0:
             continue
 
-        # Verificar si ya tiene país asignado
         has_country = comp.country is not None
-
-        # Obtener todos los equipos de esta competición
         clubs = Club.objects.filter(kit__competition=comp).distinct()
 
-        # Contar los países de los equipos
         country_counter = Counter()
         for club in clubs:
             if club.country:
                 country_counter[club.country.code] += 1
 
-        # Si no hay suficientes equipos con país, continuar
         if sum(country_counter.values()) < min_clubs:
             continue
 
-        # Encontrar el país más común
-        most_common_countries = country_counter.most_common(3)  # Obtener los 3 más comunes
+        most_common_countries = country_counter.most_common(3)
         if not most_common_countries:
             continue
 
         country_code, count = most_common_countries[0]
         confidence = (count / sum(country_counter.values())) * 100
 
-        # Verificar si cumple con el porcentaje mínimo
         if confidence < min_percentage:
             continue
 
-        # Verificar si es una competición internacional
         is_international = False
         comp_name_lower = comp.name.lower()
         for keyword in international_keywords:
@@ -613,22 +588,19 @@ def suggest_competition_countries(request: HttpRequest) -> JsonResponse:
                 is_international = True
                 break
 
-        # Si se excluyen internacionales y esta lo es, saltarla
         if exclude_international and is_international:
             continue
 
-        # Preparar notas
         notes = []
         if is_international:
-            notes.append("Posible competición internacional")
+            notes.append("Possible international competition")
 
         if country_code in historical_countries:
-            notes.append(f"País histórico: {historical_countries[country_code]}")
+            notes.append(f"Historical country: {historical_countries[country_code]}")
 
         if has_country and comp.country.code != country_code:
-            notes.append(f"Ya tiene país asignado: {comp.country.name}")
+            notes.append(f"Already assigned country: {comp.country.name}")
 
-        # Añadir a los resultados
         results.append(
             {
                 "id": comp.id,
@@ -655,11 +627,9 @@ def suggest_competition_countries(request: HttpRequest) -> JsonResponse:
             }
         )
 
-    # Paginar los resultados
-    paginator = Paginator(results, 20)  # 20 competiciones por página
+    paginator = Paginator(results, 20)  # 20 competitions per page
     page_obj = paginator.get_page(page_number)
 
-    # Preparar el contexto
     context = {
         "page_obj": page_obj,
         "min_clubs": min_clubs,
@@ -675,15 +645,15 @@ def suggest_competition_countries(request: HttpRequest) -> JsonResponse:
 
 def clubs_without_country(request: HttpRequest) -> HttpResponse:
     """
-    Vista para mostrar los clubes con más kits que aún no tienen país asignado,
-    permitiendo asignarles un país directamente.
+    View to display clubs with the most kits that do not yet have a country assigned,
+    allowing assignment of a country directly.
     """
-    # Obtener parámetros de la solicitud
+    # Get request parameters
     min_kits = int(request.GET.get("min_kits", 5))
     page_number = request.GET.get("page", 1)
     search_query = request.GET.get("search", "")
 
-    # Obtener clubes sin país asignado, ordenados por cantidad de kits (descendente)
+    # Get clubs without a country, ordered by number of kits (descending)
     clubs_query = (
         Club.objects.filter(country__isnull=True)
         .annotate(kit_count=Count("kit"))
@@ -691,11 +661,11 @@ def clubs_without_country(request: HttpRequest) -> HttpResponse:
         .order_by("-kit_count")
     )
 
-    # Aplicar filtro de búsqueda si existe
+    # Search filter if any
     if search_query:
         clubs_query = clubs_query.filter(name__icontains=search_query)
 
-    # Procesar asignación de país si es una solicitud POST
+    # Process country assignment (POST)
     if request.method == "POST":
         if "assign_country" in request.POST:
             club_id = request.POST.get("club_id")
@@ -706,11 +676,10 @@ def clubs_without_country(request: HttpRequest) -> HttpResponse:
                     club = Club.objects.get(id=club_id)
                     club.country = country_code
                     club.save()
-                    messages.success(request, f"País {dict(countries)[country_code]} asignado a {club.name}")
+                    messages.success(request, f"Country {dict(countries)[country_code]} assigned to {club.name}")
                 except Exception as e:
-                    messages.error(request, f"Error al asignar país: {str(e)}")
+                    messages.error(request, f"Error assigning country: {str(e)}")
 
-            # Redirigir a la misma página con los mismos parámetros
             params = {}
             if min_kits != 5:
                 params["min_kits"] = min_kits
@@ -734,21 +703,20 @@ def clubs_without_country(request: HttpRequest) -> HttpResponse:
                         club.save()
                         assigned_count += 1
                     except Exception as e:
-                        messages.error(request, f"Error al asignar país a club {club_id}: {str(e)}")
+                        messages.error(request, f"Error assigning country to club {club_id}: {str(e)}")
 
                 if assigned_count > 0:
                     messages.success(
-                        request, f"País {dict(countries)[country_code]} asignado a {assigned_count} clubes"
+                        request, f"Country {dict(countries)[country_code]} assigned to {assigned_count} clubs"
                     )
                 else:
-                    messages.warning(request, "No se asignó país a ningún club")
+                    messages.warning(request, "No club was assigned a country")
             else:
                 if not club_ids:
-                    messages.warning(request, "No se seleccionaron clubes")
+                    messages.warning(request, "No clubs were selected")
                 if not country_code:
-                    messages.warning(request, "No se seleccionó un país")
+                    messages.warning(request, "No country was selected")
 
-            # Redirigir a la misma página con los mismos parámetros
             params = {}
             if min_kits != 5:
                 params["min_kits"] = min_kits
@@ -759,19 +727,15 @@ def clubs_without_country(request: HttpRequest) -> HttpResponse:
 
             return redirect(f"{reverse('clubs_without_country')}?{urlencode(params)}")
 
-    # Paginar los resultados
-    paginator = Paginator(clubs_query, 20)  # 20 clubes por página
+    paginator = Paginator(clubs_query, 20)  # 20 clubs per page
     page_obj = paginator.get_page(page_number)
 
-    # Obtener las competiciones más frecuentes para cada club
+    # Get most frequent competitions per club and suggest country
     for club in page_obj:
-        # Obtener las competiciones más frecuentes del club
         competitions = Competition.objects.filter(kit__team=club).annotate(count=Count("id")).order_by("-count")[:3]
-
-        # Añadir las competiciones al objeto club
         club.top_competitions = competitions
 
-        # Sugerir un país basado en las competiciones
+        # Suggest a country based on competitions
         suggested_country = None
         for comp in competitions:
             if comp.country:
@@ -780,7 +744,6 @@ def clubs_without_country(request: HttpRequest) -> HttpResponse:
 
         club.suggested_country = suggested_country
 
-    # Preparar el contexto
     context = {
         "page_obj": page_obj,
         "min_kits": min_kits,
@@ -814,7 +777,6 @@ def load_more_kits(request: HttpRequest) -> JsonResponse:
         page = int(request.GET.get("page", 1))
         page_size = int(request.GET.get("page_size", 20))
 
-        # Call API function directly instead of HTTP request
         result = get_random_kits(request, page=page, page_size=page_size)
         return JsonResponse(result)
     except Exception as e:
@@ -829,7 +791,6 @@ def load_more_clubs(request: HttpRequest) -> JsonResponse:
         page = int(request.GET.get("page", 1))
         page_size = int(request.GET.get("page_size", 20))
 
-        # Call API function directly instead of HTTP request
         result = get_random_clubs(request, page=page, page_size=page_size)
         return JsonResponse(result)
     except Exception as e:
@@ -838,8 +799,8 @@ def load_more_clubs(request: HttpRequest) -> JsonResponse:
 
 def top_clubs_by_country(request: HttpRequest) -> HttpResponse:
     """
-    Vista para mostrar las naciones ordenadas por número de kits,
-    mostrando los top 50 clubs de cada país (mínimo 20 kits).
+    View to display nations ordered by total number of kits,
+    showing the top 50 clubs per country (at least 20 kits).
     """
     min_kits = int(request.GET.get("min_kits", 20))
     page_number = request.GET.get("page", 1)

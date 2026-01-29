@@ -18,12 +18,14 @@ from core.constants import (
     COLLECTION_CONTAINER_CLASS,
     CURRENT_SEASON_YEAR,
     DEFAULT_LOGO_URL,
+    HTML_PARSER,
     HTTP_STATUS_FORBIDDEN,
     KIT_CLASS,
     KIT_CONTAINER_CLASS,
     KIT_SEASON_CLASS,
     LATEST_PAGE_URL,
     MAX_RETRIES,
+    MSG_403_RETRY_PROXY,
     RETRY_DELAY,
     SECTION_DETAILS_CLASS,
 )
@@ -345,7 +347,7 @@ def scrape_kit(
             if response.status_code == HTTP_STATUS_FORBIDDEN:
                 if retry_count == max_retries - 1:
                     raise RateLimitExceededError("Rate limit exceeded while scraping kit")
-                logger.warning("Received 403 status code. Retrying with a new proxy.")
+                logger.warning(MSG_403_RETRY_PROXY)
                 use_proxy = True
                 retry_count += 1
                 time.sleep(RETRY_DELAY)
@@ -358,7 +360,7 @@ def scrape_kit(
 
             # Parse HTML
             logger.debug("Parsing HTML response")
-            soup = BeautifulSoup(response.text, "html.parser")
+            soup = BeautifulSoup(response.text, HTML_PARSER)
 
             # Check for actual page not found messages (not network 404s)
             # Look for specific "The requested page could not be found" message
@@ -487,7 +489,7 @@ def scrape_competition(slug: str, use_proxy: bool = False) -> Competition | None
             response = http_get(f"{BASE_URL}/{slug}", use_proxy=use_proxy)
             response.raise_for_status()
 
-            soup = BeautifulSoup(response.text, "html.parser")
+            soup = BeautifulSoup(response.text, HTML_PARSER)
 
             # Get competition name
             title = soup.find("span", class_="main-title")
@@ -553,7 +555,7 @@ def scrape_club_details(slug: str, use_proxy: bool = False) -> Club | None:
             response.raise_for_status()
 
             # Parse HTML
-            soup = BeautifulSoup(response.text, "html.parser")
+            soup = BeautifulSoup(response.text, HTML_PARSER)
 
             # Get club name
             title_elem = soup.find("span", class_="main-title")
@@ -641,7 +643,7 @@ def scrape_whole_club(club: Club) -> Club | None:
             response.raise_for_status()
 
             # Parse HTML
-            soup = BeautifulSoup(response.text, "html.parser")
+            soup = BeautifulSoup(response.text, HTML_PARSER)
             container = soup.find("div", class_="archive-content-container")
             if not container:
                 raise ValueError("Archive content container not found")
@@ -825,7 +827,7 @@ def scrape_kit_lite(
             response.raise_for_status()
 
             # Parse HTML
-            soup = BeautifulSoup(response.text, "html.parser")
+            soup = BeautifulSoup(response.text, HTML_PARSER)
 
             # Get fact table
             table = soup.find("table", class_="fact-table")
@@ -980,7 +982,7 @@ def scrape_brand(slug: str, use_proxy: bool = False) -> Brand | None:
             response.raise_for_status()
 
             # Parse HTML
-            soup = BeautifulSoup(response.text, "html.parser")
+            soup = BeautifulSoup(response.text, HTML_PARSER)
 
             # Get brand name
             title_elem = soup.find("span", class_="main-title")
@@ -1073,7 +1075,7 @@ def scrape_lastest(page: int = 1, use_proxy: bool = False) -> tuple[bool, bool]:
             response.raise_for_status()
 
             # Parse HTML
-            soup = BeautifulSoup(response.text, "html.parser")
+            soup = BeautifulSoup(response.text, HTML_PARSER)
             kit_container = soup.find("div", class_=KIT_CONTAINER_CLASS)
             if not kit_container:
                 raise ValueError("Kit container not found")

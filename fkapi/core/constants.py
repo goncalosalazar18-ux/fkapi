@@ -56,6 +56,10 @@ COMPETITION_SEPARATOR = "·"
 HTTP_STATUS_FORBIDDEN = 403
 HTTP_STATUS_NOT_FOUND = 404
 
+# Scraper messages and parsers
+MSG_403_RETRY_PROXY = "Received 403 status code. Retrying with a new proxy."
+HTML_PARSER = "html.parser"
+
 # Retry settings
 MAX_RETRIES = 3
 RETRY_DELAY = 2

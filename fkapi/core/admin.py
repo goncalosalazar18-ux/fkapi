@@ -69,8 +69,7 @@ admin.site.register(Competition, CompetitionAdmin)
 
 
 class BrandAdmin(admin.ModelAdmin):
-    # search_fields = ('name', 'slug')
-    search_fields = ("logo_dark",)
+    search_fields = ("name", "logo_dark",)
     list_display = ("logo_height", "name", "slug")
 
     def logo_height(self, obj):

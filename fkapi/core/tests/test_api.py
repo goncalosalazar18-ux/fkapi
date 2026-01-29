@@ -98,18 +98,10 @@ class APITests(TestCase):
         cache.clear()
 
         # Create test seasons for priority testing (using get_or_create to avoid conflicts)
-        season_exact, _ = Season.objects.get_or_create(
-            year="2025", defaults={"first_year": "2025", "second_year": None}
-        )
-        season_starts_with, _ = Season.objects.get_or_create(
-            year="2025-26", defaults={"first_year": "2025", "second_year": "2026"}
-        )
-        season_ends_with, _ = Season.objects.get_or_create(
-            year="2024-25", defaults={"first_year": "2024", "second_year": "2025"}
-        )
-        season_contains, _ = Season.objects.get_or_create(
-            year="2025-27", defaults={"first_year": "2025", "second_year": "2027"}
-        )
+        Season.objects.get_or_create(year="2025", defaults={"first_year": "2025", "second_year": None})
+        Season.objects.get_or_create(year="2025-26", defaults={"first_year": "2025", "second_year": "2026"})
+        Season.objects.get_or_create(year="2024-25", defaults={"first_year": "2024", "second_year": "2025"})
+        Season.objects.get_or_create(year="2025-27", defaults={"first_year": "2025", "second_year": "2027"})
 
         response = self.client.get("/api/seasons/search", {"keyword": "2025"})
         self.assertEqual(response.status_code, 200, f"Response: {response.content}")
