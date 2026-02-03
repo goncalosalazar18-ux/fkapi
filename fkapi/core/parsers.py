@@ -79,6 +79,17 @@ def extract_fact_table(soup: BeautifulSoup) -> FactTable:
     return FactTable(element=table, rows=rows, values=values)
 
 
+def _parse_rating(soup: BeautifulSoup) -> float:
+    rating_span = soup.find("span", id=RATING_SPAN_ID)
+    rating_details = soup.find("span", id=RATING_DETAILS_ID)
+    if not rating_span or not rating_span.text.strip() or rating_details:
+        return 0.0
+    try:
+        return float(rating_span.text.strip())
+    except ValueError:
+        return 0.0
+
+
 def parse_kit_page(soup: BeautifulSoup) -> KitPageData:
     """Parse the kit page and return a KitPageData object."""
     fact_table = extract_fact_table(soup)
@@ -97,14 +108,7 @@ def parse_kit_page(soup: BeautifulSoup) -> KitPageData:
     season_text = fact_table.get_text(FIELD_SEASON)
 
     # Rating
-    rating = 0.0
-    rating_span = soup.find("span", id=RATING_SPAN_ID)
-    rating_details = soup.find("span", id=RATING_DETAILS_ID)
-    if rating_span and rating_span.text.strip() and not rating_details:
-        try:
-            rating = float(rating_span.text.strip())
-        except ValueError:
-            rating = 0.0
+    rating = _parse_rating(soup)
 
     # Main Image
     main_img = soup.find("img", class_=TOP_IMAGE_CLASS)

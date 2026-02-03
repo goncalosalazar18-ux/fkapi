@@ -1,6 +1,13 @@
 # Documentation Index
 
 [![codecov](https://codecov.io/gh/sunr4y/fkapi/graph/badge.svg?token=GK17MP3KNY)](https://codecov.io/gh/sunr4y/fkapi)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=sunr4y_fkapi&metric=alert_status&token=98224e19ab308456580633cd3ce07e0f37a4b083)](https://sonarcloud.io/summary/new_code?id=sunr4y_fkapi)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=sunr4y_fkapi&metric=bugs&token=98224e19ab308456580633cd3ce07e0f37a4b083)](https://sonarcloud.io/summary/new_code?id=sunr4y_fkapi)
+[![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=sunr4y_fkapi&metric=ncloc&token=98224e19ab308456580633cd3ce07e0f37a4b083)](https://sonarcloud.io/summary/new_code?id=sunr4y_fkapi)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=sunr4y_fkapi&metric=security_rating&token=98224e19ab308456580633cd3ce07e0f37a4b083)](https://sonarcloud.io/summary/new_code?id=sunr4y_fkapi)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=sunr4y_fkapi&metric=sqale_rating&token=98224e19ab308456580633cd3ce07e0f37a4b083)](https://sonarcloud.io/summary/new_code?id=sunr4y_fkapi)
+[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=sunr4y_fkapi&metric=vulnerabilities&token=98224e19ab308456580633cd3ce07e0f37a4b083)](https://sonarcloud.io/summary/new_code?id=sunr4y_fkapi)
+[![Quality gate](https://sonarcloud.io/api/project_badges/quality_gate?project=sunr4y_fkapi&token=98224e19ab308456580633cd3ce07e0f37a4b083)](https://sonarcloud.io/summary/new_code?id=sunr4y_fkapi)
 
 Welcome to the Football Kit Archive API documentation. This index will help you find the information you need.
 

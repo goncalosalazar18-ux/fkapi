@@ -1,5 +1,6 @@
 # Standard library imports
 import logging
+import re
 import time
 from contextlib import contextmanager
 from typing import Any
@@ -97,192 +98,128 @@ def get_current_season() -> Season:
         raise Season.DoesNotExist(f"The {CURRENT_SEASON_YEAR} season was not found") from e
 
 
-def get_season(season_slug: str, season_display: str | None = None) -> Season:
+def _normalize_season_slug(slug: str) -> str:
+    return re.sub(r"\s*\(Carry-over\)\s*", "", slug, flags=re.IGNORECASE).strip()
+
+
+def _parse_two_digit_year(slug: str) -> tuple[str, str, str | None] | None:
+    m = re.match(r"^(\d{2})(?:-(\d{2}))?$", slug)
+    if not m or len(slug) > 7:
+        return None
+    first_short, second_short = m.group(1), m.group(2)
+    first_century = "19" if int(first_short) >= 50 else "20"
+    first_year = first_century + first_short
+    if not second_short:
+        return (first_year, first_year, None)
+    first_year_int = int(first_year)
+    second_candidate = int(first_century + second_short)
+    if second_candidate < first_year_int:
+        second_century = "20" if first_century == "19" else "21"
+    else:
+        second_century = first_century
+    second_year = second_century + second_short
+    return (f"{first_year}-{second_short}", first_year, second_year)
+
+
+def _parse_direct_year(slug: str) -> tuple[str, str, str | None] | None:
+    m = re.match(r"^(\d{4})(?:-(\d{2}|\d{4}))?$", slug)
+    if not m:
+        return None
+    first_year = m.group(1)
+    second_part = m.group(2)
+    if not second_part:
+        return (first_year, first_year, None)
+    if len(second_part) == 2:
+        fy_digit = int(first_year[2])
+        sy_digit = int(second_part[0])
+        century = str(int(first_year[:2]) + 1) if sy_digit < fy_digit else first_year[:2]
+        second_year = century + second_part
+        year_str = f"{first_year}-{second_part}"
+    else:
+        second_year = second_part
+        year_str = f"{first_year}-{second_part}"
+    return (year_str, first_year, second_year)
+
+
+def _parse_year_from_kit_slug(slug: str) -> tuple[str, str, str | None]:
+    all_matches = list(re.finditer(r"-(\d{4})(?:-(\d{2}))?-", slug + "-"))
+    if not all_matches:
+        raise ValueError(f"Could not find year in slug: {slug}")
+    year_match = None
+    for match in reversed(all_matches):
+        if 1900 <= int(match.group(1)) <= 2100:
+            year_match = match
+            break
+    year_match = year_match or all_matches[-1]
+    first_year = year_match.group(1)
+    second_short = year_match.group(2)
+    if not second_short:
+        return (first_year, first_year, None)
+    fy_digit = int(first_year[2])
+    sy_digit = int(second_short[0])
+    century = str(int(first_year[:2]) + 1) if sy_digit < fy_digit else first_year[:2]
+    second_year = century + second_short
+    return (f"{first_year}-{second_short}", first_year, second_year)
+
+
+def _validate_season_years(original_slug: str, first_year: str, second_year: str | None) -> None:
+    try:
+        first_year_int = int(first_year)
+    except ValueError as err:
+        raise InvalidSeasonError(original_slug, f"first_year '{first_year}' is not a valid integer") from err
+    if first_year_int < 1800 or first_year_int > 2100:
+        raise InvalidSeasonError(original_slug, f"first_year '{first_year}' is out of valid range (1800-2100)")
+    if not second_year:
+        return
+    try:
+        second_year_int = int(second_year)
+    except ValueError as err:
+        raise InvalidSeasonError(original_slug, f"second_year '{second_year}' is not a valid integer") from err
+    if second_year_int < 1800 or second_year_int > 2100:
+        raise InvalidSeasonError(original_slug, f"second_year '{second_year}' is out of valid range (1800-2100)")
+    if second_year_int < first_year_int:
+        raise InvalidSeasonError(
+            original_slug,
+            f"second_year '{second_year}' ({second_year_int}) cannot be before first_year '{first_year}' ({first_year_int})",
+        )
+    year_span = second_year_int - first_year_int
+    max_span = 20 if first_year_int < 1960 else 2
+    if year_span > max_span:
+        raise InvalidSeasonError(
+            original_slug,
+            f"Year span is {year_span} years (max allowed: {max_span}). first_year: {first_year}, second_year: {second_year}",
+        )
+
+
+def _get_or_create_season(year_str: str, first_year: str, second_year: str | None) -> Season:
+    try:
+        return Season.objects.get(year=year_str)
+    except Season.DoesNotExist:
+        return Season.objects.create(year=year_str, first_year=first_year, second_year=second_year)
+
+
+def get_season(season_slug: str) -> Season:
     """
     Retrieves or creates a Season object using the full year from the slug.
 
     Args:
-        season_slug: str - The full URL slug (e.g., 'olympique-marseille-2020-21-third-kit' or 'germany-2024-home-kit')
-                          or a direct year string (e.g., '2024', '2023-24', '1999-00')
-        season_display: str - Optional display format from the page (e.g., '2020-21' or '2024')
+        season_slug: The full URL slug (e.g., 'olympique-marseille-2020-21-third-kit')
+                     or a direct year string (e.g., '2024', '2023-24', '1999-00').
 
     The function handles both full kit slugs and direct year strings.
     """
     try:
-        import re
-
-        # Clean "(Carry-over)" text - we don't differentiate between carry-over and normal seasons
-        season_slug = re.sub(r"\s*\(Carry-over\)\s*", "", season_slug, flags=re.IGNORECASE).strip()
-
-        # Check if the input is a 2-digit year format (e.g., '24-25', '23-24', '99-00')
-        two_digit_year_match = re.match(r"^(\d{2})(?:-(\d{2}))?$", season_slug)
-        if two_digit_year_match and len(season_slug) <= 7:
-            first_year_short = two_digit_year_match.group(1)
-            second_year_short = two_digit_year_match.group(2)
-            first_year_short_int = int(first_year_short)
-
-            # Determine century for 2-digit years:
-            # - Years >= 50 are likely from 1900s (1950-1999)
-            # - Years < 50 are likely from 2000s (2000-2049)
-            # This handles cases like '99-00' -> 1999-00, '24-25' -> 2024-25
-            if first_year_short_int >= 50:
-                first_century = "19"
-            else:
-                first_century = "20"
-
-            first_year = first_century + first_year_short
-
-            if second_year_short:
-                # Determine century for second year
-                first_year_int = int(first_year)
-
-                # Try same century first
-                second_year_candidate = int(first_century + second_year_short)
-
-                # If second year would be before first year, it crossed century boundary
-                if second_year_candidate < first_year_int:
-                    # Crossed century boundary - second year is in next century
-                    if first_century == "19":
-                        second_century = "20"
-                    else:
-                        second_century = "21"
-                else:
-                    second_century = first_century
-
-                second_year = second_century + second_year_short
-                year_str = f"{first_year}-{second_year_short}"
-            else:
-                second_year = None
-                year_str = first_year
-
-            try:
-                return Season.objects.get(year=year_str)
-            except Season.DoesNotExist:
-                return Season.objects.create(year=year_str, first_year=first_year, second_year=second_year)
-
-        # Check if the input is a direct year format (e.g., '2024', '2023-24', '1999-00', '2023-2024')
-        direct_year_match = re.match(r"^(\d{4})(?:-(\d{2}|\d{4}))?$", season_slug)
-
-        if direct_year_match:
-            # Direct year format
-            first_year = direct_year_match.group(1)
-            second_year_part = direct_year_match.group(2)
-
-            if second_year_part:
-                # Handle both 2-digit and 4-digit second year formats
-                if len(second_year_part) == 2:
-                    # If the second year's first digit is less than the first year's first digit,
-                    # then we've crossed into the next century
-                    first_year_first_digit = int(first_year[2])
-                    second_year_first_digit = int(second_year_part[0])
-
-                    if second_year_first_digit < first_year_first_digit:
-                        # We've crossed into the next century
-                        century = str(int(first_year[:2]) + 1)
-                    else:
-                        # Same century
-                        century = first_year[:2]
-
-                    second_year = century + second_year_part
-                    year_str = f"{first_year}-{second_year_part}"
-                else:
-                    # 4-digit year format (e.g., '2023-2024')
-                    second_year = second_year_part
-                    year_str = f"{first_year}-{second_year_part}"
-            else:
-                # Single year format (e.g., '2024')
-                second_year = None
-                year_str = first_year
-        else:
-            # Try to extract year from a full kit slug
-            # Find ALL potential year matches to handle cases where club name contains a year
-            # (e.g., "fc-rouen-1899-2023-24-home-kit" should use 2023, not 1899)
-            all_year_matches = list(re.finditer(r"-(\d{4})(?:-(\d{2}))?-", season_slug + "-"))
-            if not all_year_matches:
-                raise ValueError(f"Could not find year in slug: {season_slug}")
-
-            # If multiple matches, prefer the last one (most likely to be the actual season year)
-            # Also validate that the year is in a reasonable range (1900-2100)
-            year_match = None
-            for match in reversed(all_year_matches):
-                potential_year = int(match.group(1))
-                # Prefer years in reasonable range (1900-2100) over very old years from club names
-                if 1900 <= potential_year <= 2100:
-                    year_match = match
-                    break
-
-            # If no match in reasonable range, use the last match
-            if not year_match:
-                year_match = all_year_matches[-1]
-
-            first_year = year_match.group(1)
-            second_year_short = year_match.group(2)
-
-            if second_year_short:
-                # If the second year's first digit is less than the first year's first digit,
-                # then we've crossed into the next century
-                first_year_first_digit = int(first_year[2])
-                second_year_first_digit = int(second_year_short[0])
-
-                if second_year_first_digit < first_year_first_digit:
-                    # We've crossed into the next century
-                    century = str(int(first_year[:2]) + 1)
-                else:
-                    # Same century
-                    century = first_year[:2]
-
-                second_year = century + second_year_short
-                year_str = f"{first_year}-{second_year_short}"
-            else:
-                second_year = None
-                year_str = first_year
-
-        # Validate before creating
-        try:
-            first_year_int = int(first_year)
-        except ValueError as err:
-            raise InvalidSeasonError(season_slug, f"first_year '{first_year}' is not a valid integer") from err
-
-        # Validate year range for first_year
-        if first_year_int < 1800 or first_year_int > 2100:
-            raise InvalidSeasonError(season_slug, f"first_year '{first_year}' is out of valid range (1800-2100)")
-
-        if second_year:
-            try:
-                second_year_int = int(second_year)
-            except ValueError as err:
-                raise InvalidSeasonError(season_slug, f"second_year '{second_year}' is not a valid integer") from err
-
-            # Validate year range for second_year
-            if second_year_int < 1800 or second_year_int > 2100:
-                raise InvalidSeasonError(season_slug, f"second_year '{second_year}' is out of valid range (1800-2100)")
-
-            # Validate that second_year is not before first_year
-            if second_year_int < first_year_int:
-                raise InvalidSeasonError(
-                    season_slug,
-                    f"second_year '{second_year}' ({second_year_int}) cannot be before first_year '{first_year}' ({first_year_int})",
-                )
-
-            # Validate year span
-            # For modern seasons (after 1960), max span is 2 years
-            # For older seasons (before 1960), allow larger spans (up to 20 years)
-            # This handles cases like "1937-49" or "1956-59" which were common in older football
-            year_span = second_year_int - first_year_int
-            max_span = 20 if first_year_int < 1960 else 2
-
-            if year_span > max_span:
-                raise InvalidSeasonError(
-                    season_slug,
-                    f"Year span is {year_span} years (max allowed: {max_span}). first_year: {first_year}, second_year: {second_year}",
-                )
-
-        # Try to get existing season first
-        try:
-            return Season.objects.get(year=year_str)
-        except Season.DoesNotExist:
-            return Season.objects.create(year=year_str, first_year=first_year, second_year=second_year)
-
+        slug = _normalize_season_slug(season_slug)
+        parsed = _parse_two_digit_year(slug)
+        if parsed:
+            year_str, first_year, second_year = parsed
+            return _get_or_create_season(year_str, first_year, second_year)
+        parsed = _parse_direct_year(slug)
+        if parsed is None:
+            parsed = _parse_year_from_kit_slug(slug)
+        year_str, first_year, second_year = parsed
+        _validate_season_years(season_slug, first_year, second_year)
+        return _get_or_create_season(year_str, first_year, second_year)
     except Exception as e:
         raise InvalidSeasonError(season_slug, f"Error processing season from slug '{season_slug}': {str(e)}") from e
 

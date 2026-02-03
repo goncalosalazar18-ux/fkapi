@@ -177,51 +177,41 @@ def _invalidate_patterns(patterns: list[str]) -> None:
         logger.debug(f"Cache pattern invalidation not supported: {str(e)}")
 
 
+_MODEL_INVALIDATORS = {
+    Club: invalidate_club_cache,
+    Season: invalidate_season_cache,
+    Kit: invalidate_kit_cache,
+    Brand: invalidate_brand_cache,
+    Competition: invalidate_competition_cache,
+}
+
+
+def _invalidate_kit_related(kit: Kit) -> None:
+    if kit.team:
+        invalidate_club_cache(kit.team.id)
+    if kit.season:
+        invalidate_season_cache(kit.season.id)
+
+
 def setup_cache_invalidation() -> None:
     """
     Set up signal handlers for automatic cache invalidation on model changes.
     """
 
     def invalidate_on_save(sender, instance, **kwargs):
-        """Invalidate cache when a model instance is saved."""
-        if isinstance(instance, Club):
-            invalidate_club_cache(instance.id)
-        elif isinstance(instance, Season):
-            invalidate_season_cache(instance.id)
-        elif isinstance(instance, Kit):
-            invalidate_kit_cache(instance.id)
-            if instance.team:
-                invalidate_club_cache(instance.team.id)
-            if instance.season:
-                invalidate_season_cache(instance.season.id)
-        elif isinstance(instance, Brand):
-            invalidate_brand_cache(instance.id)
-        elif isinstance(instance, Competition):
-            invalidate_competition_cache(instance.id)
+        invalidation_fn = _MODEL_INVALIDATORS.get(type(instance))
+        if invalidation_fn is not None:
+            invalidation_fn(instance.id)
+        if type(instance) is Kit:
+            _invalidate_kit_related(instance)
 
     def invalidate_on_delete(sender, instance, **kwargs):
-        """Invalidate cache when a model instance is deleted."""
-        if isinstance(instance, Club):
-            invalidate_club_cache(instance.id)
-        elif isinstance(instance, Season):
-            invalidate_season_cache(instance.id)
-        elif isinstance(instance, Kit):
-            invalidate_kit_cache(instance.id)
-        elif isinstance(instance, Brand):
-            invalidate_brand_cache(instance.id)
-        elif isinstance(instance, Competition):
-            invalidate_competition_cache(instance.id)
+        invalidation_fn = _MODEL_INVALIDATORS.get(type(instance))
+        if invalidation_fn is not None:
+            invalidation_fn(instance.id)
 
-    post_save.connect(invalidate_on_save, sender=Club)
-    post_save.connect(invalidate_on_save, sender=Season)
-    post_save.connect(invalidate_on_save, sender=Kit)
-    post_save.connect(invalidate_on_save, sender=Brand)
-    post_save.connect(invalidate_on_save, sender=Competition)
-
-    post_delete.connect(invalidate_on_delete, sender=Club)
-    post_delete.connect(invalidate_on_delete, sender=Season)
-    post_delete.connect(invalidate_on_delete, sender=Kit)
-    post_delete.connect(invalidate_on_delete, sender=Brand)
-    post_delete.connect(invalidate_on_delete, sender=Competition)
+    for model in (Club, Season, Kit, Brand, Competition):
+        post_save.connect(invalidate_on_save, sender=model)
+        post_delete.connect(invalidate_on_delete, sender=model)
 
     logger.info("Cache invalidation signals configured")

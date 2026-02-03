@@ -79,6 +79,64 @@ def rate_limit_middleware(get_response):
     return middleware
 
 
+def _get_initial_query_state() -> tuple[bool, int]:
+    queries_available = settings.DEBUG and hasattr(connection, "queries")
+    initial_queries = len(connection.queries) if queries_available else 0
+    return queries_available, initial_queries
+
+
+def _log_slow_queries(
+    path: str, method: str, initial_queries: int, query_times: list[float], slow_query_threshold: float
+) -> None:
+    slow_queries = [
+        connection.queries[initial_queries + i] for i, t in enumerate(query_times) if t > slow_query_threshold
+    ]
+    for query in slow_queries:
+        db_logger.warning(
+            f"Slow query detected ({query.get('time', 0)}s): {query.get('sql', '')[:200]}",
+            extra={"path": path, "method": method, "duration": query.get("time", 0)},
+        )
+
+
+def _log_response_time(
+    path: str,
+    method: str,
+    status_code: int,
+    duration: float,
+    total_queries: int,
+    slow_response_threshold: float,
+) -> None:
+    extra = {
+        "path": path,
+        "method": method,
+        "duration": duration,
+        "status_code": status_code,
+        "query_count": total_queries,
+    }
+    if duration > slow_response_threshold:
+        performance_logger.warning(
+            f"Slow response: {method} {path} took {duration:.3f}s (status: {status_code})", extra=extra
+        )
+    else:
+        performance_logger.info(
+            f"{method} {path} - {duration:.3f}s (status: {status_code}, queries: {total_queries})", extra=extra
+        )
+
+
+def _add_performance_headers(response: Any, duration: float, total_queries: int) -> None:
+    if hasattr(response, "headers"):
+        response.headers["X-Response-Time"] = f"{duration:.3f}s"
+        if total_queries > 0:
+            response.headers["X-Query-Count"] = str(total_queries)
+    elif hasattr(response, "__setitem__"):
+        try:
+            response["X-Response-Time"] = f"{duration:.3f}s"
+            if total_queries > 0:
+                response["X-Query-Count"] = str(total_queries)
+        except (TypeError, KeyError):
+            pass
+
+
 def performance_monitoring_middleware(get_response):
     """
     Middleware to log response times, database queries, and API usage statistics.
@@ -86,48 +144,20 @@ def performance_monitoring_middleware(get_response):
 
     def middleware(request):
         start_time = time.time()
-
-        queries_available = settings.DEBUG and hasattr(connection, "queries")
-        if queries_available:
-            initial_queries = len(connection.queries)
-        else:
-            initial_queries = 0
-
+        queries_available, initial_queries = _get_initial_query_state()
         response = get_response(request)
-
         duration = time.time() - start_time
-
-        if queries_available:
-            total_queries = len(connection.queries) - initial_queries
-        else:
-            total_queries = 0
-
-        path = request.path
-        method = request.method
-        status_code = response.status_code if hasattr(response, "status_code") else 200
-
+        total_queries = (len(connection.queries) - initial_queries) if queries_available else 0
+        path, method = request.path, request.method
+        status_code = getattr(response, "status_code", 200)
         slow_query_threshold = getattr(settings, "SLOW_QUERY_THRESHOLD", 0.5)
         slow_response_threshold = getattr(settings, "SLOW_RESPONSE_THRESHOLD", 1.0)
 
         if queries_available and total_queries > 0:
             query_times = [float(q.get("time", 0)) for q in connection.queries[initial_queries:]]
-            total_query_time = sum(query_times)
-            slow_queries = [
-                connection.queries[initial_queries + i] for i, t in enumerate(query_times) if t > slow_query_threshold
-            ]
-
-            if slow_queries:
-                for query in slow_queries:
-                    db_logger.warning(
-                        f"Slow query detected ({query.get('time', 0)}s): {query.get('sql', '')[:200]}",
-                        extra={
-                            "path": path,
-                            "method": method,
-                            "duration": query.get("time", 0),
-                        },
-                    )
-
+            _log_slow_queries(path, method, initial_queries, query_times, slow_query_threshold)
             if getattr(settings, "LOG_DB_QUERIES", False):
+                total_query_time = sum(query_times)
                 db_logger.info(
                     f"DB queries: {total_queries} queries in {total_query_time:.3f}s",
                     extra={
@@ -138,44 +168,10 @@ def performance_monitoring_middleware(get_response):
                     },
                 )
 
-        if duration > slow_response_threshold:
-            performance_logger.warning(
-                f"Slow response: {method} {path} took {duration:.3f}s (status: {status_code})",
-                extra={
-                    "path": path,
-                    "method": method,
-                    "duration": duration,
-                    "status_code": status_code,
-                    "query_count": total_queries,
-                },
-            )
-        else:
-            performance_logger.info(
-                f"{method} {path} - {duration:.3f}s (status: {status_code}, queries: {total_queries})",
-                extra={
-                    "path": path,
-                    "method": method,
-                    "duration": duration,
-                    "status_code": status_code,
-                    "query_count": total_queries,
-                },
-            )
-
+        _log_response_time(path, method, status_code, duration, total_queries, slow_response_threshold)
         if path.startswith("/api/"):
             _track_api_usage(request, response, duration, total_queries)
-
-        if hasattr(response, "headers"):
-            response.headers["X-Response-Time"] = f"{duration:.3f}s"
-            if total_queries > 0:
-                response.headers["X-Query-Count"] = str(total_queries)
-        elif hasattr(response, "__setitem__"):
-            try:
-                response["X-Response-Time"] = f"{duration:.3f}s"
-                if total_queries > 0:
-                    response["X-Query-Count"] = str(total_queries)
-            except (TypeError, KeyError):
-                pass
-
+        _add_performance_headers(response, duration, total_queries)
         return response
 
     return middleware
