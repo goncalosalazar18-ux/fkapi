@@ -99,7 +99,14 @@ def get_current_season() -> Season:
 
 
 def _normalize_season_slug(slug: str) -> str:
-    return re.sub(r"\s*\(Carry-over\)\s*", "", slug, flags=re.IGNORECASE).strip()
+    s = slug.strip()
+    while True:
+        lower = s.lower()
+        idx = lower.find("(carry-over)")
+        if idx < 0:
+            break
+        s = (s[:idx] + s[idx + 12 :]).strip()
+    return s
 
 
 def _parse_two_digit_year(slug: str) -> tuple[str, str, str | None] | None:

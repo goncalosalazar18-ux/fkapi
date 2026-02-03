@@ -8,6 +8,7 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
 from django_countries import countries
 
 from fkapi.api import get_random_clubs, get_random_kits
@@ -40,6 +41,7 @@ def _is_international_competition(comp_name: str, keywords: list) -> bool:
     return any(kw in lower for kw in keywords)
 
 
+@require_http_methods(["GET", "POST"])
 def assign_countries(request: HttpRequest) -> HttpResponse:
     """
     View to assign countries to competitions.
@@ -494,6 +496,7 @@ def _suggest_build_redirect_params(min_clubs, min_percentage, only_without_count
     return params
 
 
+@require_http_methods(["GET", "POST"])
 def suggest_competition_countries(request: HttpRequest) -> HttpResponse:
     """
     View to suggest/assign countries to competitions based on the countries of the clubs participating in them.
