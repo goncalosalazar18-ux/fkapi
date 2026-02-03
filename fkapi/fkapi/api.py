@@ -27,7 +27,7 @@ from core.exceptions import (
     ScrapingError,
     ValidationError,
 )
-from core.models import Brand, Club, Competition, Kit, Season
+from core.models import Brand, Club, Color, Competition, Kit, Season
 from core.serializers import (
     BrandBulkSchema,
     BrandJsonSchema,
@@ -829,6 +829,72 @@ _QUERY_PAGE = Query(1, description=_QUERY_PAGE_DESC, ge=1)
 _QUERY_PAGE_SIZE = Query(20, description=_QUERY_PAGE_SIZE_DESC, ge=1, le=100)
 
 
+def _list_kits_filter_primary_color(q: Any, primary_color: str) -> Any:
+    if primary_color not in AVAILABLE_COLORS:
+        raise ValidationError(
+            f"Invalid primary_color '{primary_color}'. Available options: {', '.join(AVAILABLE_COLORS)}"
+        )
+    try:
+        color_obj = Color.objects.get(name=primary_color)
+        return q.filter(primary_color=color_obj)
+    except Color.DoesNotExist:
+        return q.none()
+
+
+def _list_kits_filter_secondary_color(q: Any, secondary_color: list[str]) -> Any:
+    invalid_colors = [c for c in secondary_color if c not in AVAILABLE_COLORS]
+    if invalid_colors:
+        raise ValidationError(
+            f"Invalid secondary_color(s): {', '.join(invalid_colors)}. Available options: {', '.join(AVAILABLE_COLORS)}"
+        )
+    color_objs = list(Color.objects.filter(name__in=secondary_color))
+    if len(color_objs) != len(secondary_color):
+        return q.none()
+    for color_obj in color_objs:
+        q = q.filter(secondary_color=color_obj)
+    return q.distinct()
+
+
+def _list_kits_filter_design(q: Any, design: str) -> Any:
+    design_normalized = design.strip()
+    if design_normalized not in AVAILABLE_DESIGNS:
+        raise ValidationError(f"Invalid design '{design}'. Available options: {', '.join(AVAILABLE_DESIGNS)}")
+    return q.filter(design=design_normalized)
+
+
+def _apply_list_kits_filters(
+    q: Any,
+    club: int | None,
+    season: int | None,
+    country: str | None,
+    primary_color: str | None,
+    secondary_color: list[str] | None,
+    design: str | None,
+    year: int | None,
+    first_year: int | None,
+    second_year: int | None,
+) -> Any:
+    if club:
+        q = q.filter(team__id=club)
+    if season:
+        q = q.filter(season__id=season)
+    if country:
+        q = q.filter(team__country=country.upper())
+    if primary_color:
+        q = _list_kits_filter_primary_color(q, primary_color)
+    if secondary_color:
+        q = _list_kits_filter_secondary_color(q, secondary_color)
+    if design:
+        q = _list_kits_filter_design(q, design)
+    if year:
+        q = q.filter(Q(season__first_year=str(year)) | Q(season__second_year=str(year)))
+    if first_year:
+        q = q.filter(season__first_year=str(first_year))
+    if second_year:
+        q = q.filter(season__second_year=str(second_year))
+    return q
+
+
 @api.get(
     "/kits",
     response=list[KitSerializer],
@@ -912,7 +978,6 @@ def list_kits(
     from django.conf import settings
     from django.core.paginator import Paginator
 
-    from core.models import Color
 
     cache_key = generate_cache_key(
         "kits",
@@ -940,59 +1005,18 @@ def list_kits(
         page_size,
     )
     cached_result = cache.get(cache_key)
-
     if cached_result is not None:
         return cached_result
 
     kits_query = Kit.objects.select_related("team", "season", "brand", "type", "primary_color").prefetch_related(
         "secondary_color"
     )
-
-    if club:
-        kits_query = kits_query.filter(team__id=club)
-    if season:
-        kits_query = kits_query.filter(season__id=season)
-    if country:
-        kits_query = kits_query.filter(team__country=country.upper())
-    if primary_color:
-        if primary_color not in AVAILABLE_COLORS:
-            raise ValidationError(
-                f"Invalid primary_color '{primary_color}'. Available options: {', '.join(AVAILABLE_COLORS)}"
-            )
-        try:
-            color_obj = Color.objects.get(name=primary_color)
-            kits_query = kits_query.filter(primary_color=color_obj)
-        except Color.DoesNotExist:
-            kits_query = kits_query.none()
-    if secondary_color:
-        invalid_colors = [c for c in secondary_color if c not in AVAILABLE_COLORS]
-        if invalid_colors:
-            raise ValidationError(
-                f"Invalid secondary_color(s): {', '.join(invalid_colors)}. Available options: {', '.join(AVAILABLE_COLORS)}"
-            )
-        color_objs = list(Color.objects.filter(name__in=secondary_color))
-        if len(color_objs) == len(secondary_color):
-            for color_obj in color_objs:
-                kits_query = kits_query.filter(secondary_color=color_obj)
-            kits_query = kits_query.distinct()
-        else:
-            kits_query = kits_query.none()
-    if design:
-        design_normalized = design.strip()
-        if design_normalized not in AVAILABLE_DESIGNS:
-            raise ValidationError(f"Invalid design '{design}'. Available options: {', '.join(AVAILABLE_DESIGNS)}")
-        kits_query = kits_query.filter(design=design_normalized)
-    if year:
-        kits_query = kits_query.filter(Q(season__first_year=str(year)) | Q(season__second_year=str(year)))
-    if first_year:
-        kits_query = kits_query.filter(season__first_year=str(first_year))
-    if second_year:
-        kits_query = kits_query.filter(season__second_year=str(second_year))
-
+    kits_query = _apply_list_kits_filters(
+        kits_query, club, season, country, primary_color, secondary_color, design, year, first_year, second_year
+    )
     kits_query = kits_query.order_by("-id")
     paginator = Paginator(kits_query, page_size)
-    page_obj = paginator.get_page(page)
-    kits = list(page_obj)
+    kits = list(paginator.get_page(page))
 
     cache.set(cache_key, kits, timeout=settings.CACHE_TIMEOUT_MEDIUM)
     return kits
@@ -1042,6 +1066,55 @@ def get_seasons(request: HttpRequest, id: int = Query(..., description="Club ID"
     return seasons
 
 
+def _season_query_trailing_dash(keyword: str) -> Q:
+    year_prefix = keyword[:-1]
+    if year_prefix.isdigit() and len(year_prefix) == 4:
+        year_int = int(year_prefix)
+        return Q(first_year=str(year_int)) | Q(year__startswith=f"{year_int}-")
+    return Q(year__startswith=keyword) | Q(first_year__startswith=year_prefix)
+
+
+def _season_query_contains_dash(keyword: str) -> Q:
+    if keyword.count("-") == 1:
+        parts = keyword.split("-")
+        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+            return Q(year__exact=keyword)
+        return Q(year__exact=keyword) | Q(year__startswith=keyword)
+    return Q(year__exact=keyword)
+
+
+def _season_query_digit(keyword: str) -> Q:
+    year_int = int(keyword)
+    if len(keyword) == 4:
+        return (
+            Q(year__exact=str(year_int))
+            | Q(first_year=str(year_int))
+            | Q(second_year=str(year_int))
+            | Q(first_year__icontains=keyword)
+            | Q(second_year__icontains=keyword)
+        )
+    if len(keyword) == 2:
+        return (
+            Q(year__exact=keyword)
+            | Q(first_year__endswith=keyword)
+            | Q(second_year__endswith=keyword)
+            | Q(year__icontains=keyword)
+            | Q(first_year__icontains=keyword)
+            | Q(second_year__icontains=keyword)
+        )
+    return Q(year__icontains=keyword) | Q(first_year__icontains=keyword) | Q(second_year__icontains=keyword)
+
+
+def _build_season_search_query(keyword: str) -> Q:
+    if keyword.endswith("-"):
+        return _season_query_trailing_dash(keyword)
+    if "-" in keyword:
+        return _season_query_contains_dash(keyword)
+    if keyword.isdigit():
+        return _season_query_digit(keyword)
+    return Q(year__icontains=keyword) | Q(first_year__icontains=keyword) | Q(second_year__icontains=keyword)
+
+
 @api.get(
     "/seasons/search",
     response=list[SeasonSerializer],
@@ -1077,81 +1150,86 @@ def search_seasons(
     Returns:
         List[SeasonSerializer]: List of matching seasons, limited to 10 results
     """
+    keyword = (keyword or "").strip()
     if not keyword:
         return []
-
-    keyword = keyword.strip()
-
-    if not keyword:
-        return []
-
-    from django.conf import settings
 
     cache_key = generate_cache_key("search_seasons", keyword)
     cached_result = cache.get(cache_key)
-
     if cached_result is not None:
         return cached_result
 
-    if keyword.endswith("-"):
-        year_prefix = keyword[:-1]
-        if year_prefix.isdigit() and len(year_prefix) == 4:
-            year_int = int(year_prefix)
-            # Use first_year for simpler matching
-            year_query = Q(first_year=str(year_int)) | Q(year__startswith=f"{year_int}-")
-        else:
-            year_query = Q(year__startswith=keyword) | Q(first_year__startswith=year_prefix)
-    elif "-" in keyword:
-        if keyword.count("-") == 1:
-            parts = keyword.split("-")
-            if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
-                year_query = Q(year__exact=keyword)
-            else:
-                year_query = Q(year__exact=keyword) | Q(year__startswith=keyword)
-        else:
-            year_query = Q(year__exact=keyword)
-    elif keyword.isdigit():
-        year_int = int(keyword)
-        if len(keyword) == 4:
-            # Use first_year and second_year for simpler and more accurate matching
-            year_query = (
-                Q(year__exact=str(year_int))  # Exact match (single year format)
-                | Q(first_year=str(year_int))  # Starts with keyword (e.g., "2025-26")
-                | Q(second_year=str(year_int))  # Ends with keyword (e.g., "2024-25")
-                | Q(first_year__icontains=keyword)  # Contains in first_year
-                | Q(second_year__icontains=keyword)  # Contains in second_year
-            )
-        elif len(keyword) == 2:
-            # For 2-digit years (e.g., "97"), interpret as full year (e.g., "1997")
-            # Search for years ending with the 2 digits
-            year_query = (
-                Q(year__exact=keyword)  # Exact match (e.g., "97")
-                | Q(first_year__endswith=keyword)  # first_year ends with keyword (e.g., "1997")
-                | Q(second_year__endswith=keyword)  # second_year ends with keyword (e.g., "1997")
-                | Q(year__icontains=keyword)  # Contains in year field
-                | Q(first_year__icontains=keyword)  # Contains in first_year
-                | Q(second_year__icontains=keyword)  # Contains in second_year
-            )
-        else:
-            year_query = (
-                Q(year__icontains=keyword) | Q(first_year__icontains=keyword) | Q(second_year__icontains=keyword)
-            )
-    else:
-        year_query = Q(year__icontains=keyword) | Q(first_year__icontains=keyword) | Q(second_year__icontains=keyword)
-
-    # Get more results to allow for reordering
+    year_query = _build_season_search_query(keyword)
     seasons = Season.objects.filter(year_query).order_by("-year")[:20]
     seasons_list = list(seasons)
-
-    # Reorder by priority using first_year and second_year
     seasons_list.sort(key=lambda s: (_get_season_priority(s, keyword), s.year))
-
-    # Take top 10 after reordering
     result = seasons_list[:10]
-
     cache.set(cache_key, result, timeout=settings.CACHE_TIMEOUT_MEDIUM)
-
     return result
+
+
+def _search_kits_extract_year_terms(search_query: str) -> tuple[str | None, str]:
+    year_match = re.search(r"\b(19|20)\d{2}\b", search_query)
+    if not year_match:
+        return None, search_query
+    year = year_match.group(0)
+    search_terms = search_query.replace(year, "").strip()
+    return year, search_terms
+
+
+def _search_kits_apply_year_filter(base_kits, year: str | None):
+    if not year:
+        return base_kits
+    year_int = int(year)
+    year_short = str(year_int)[-2:]
+    prev_year = year_int - 1
+    year_query = (
+        Q(season__year__exact=str(year_int))
+        | Q(season__year__exact=f"{prev_year}-{year_short}")
+        | Q(season__year__exact=f"{year_int}-{str(year_int + 1)[-2:]}")
+    )
+    return base_kits.filter(year_query)
+
+
+def _search_kits_apply_name_search(base_kits, search_terms: str):
+    if not search_terms:
+        return base_kits
+    terms = search_terms.split()
+    simple_matches = base_kits.filter(_unaccent_filter("name", search_terms))
+    if simple_matches.exists():
+        return simple_matches
+    term_matches = base_kits
+    for term in terms:
+        if len(term) > 2:
+            term_matches = term_matches.filter(_unaccent_filter("name", term))
+    if term_matches.exists():
+        return term_matches
+    or_query = Q()
+    for term in terms:
+        if len(term) > 2:
+            or_query |= _unaccent_filter("name", term)
+    if or_query:
+        return base_kits.filter(or_query)
+    return base_kits.none()
+
+
+def _search_kits_primary_then_secondary(kits_list: list) -> list:
+    primary_teams = [k for k in kits_list if not _is_secondary_team(k.team.name)]
+    secondary_teams = [k for k in kits_list if _is_secondary_team(k.team.name)]
+    return (primary_teams + secondary_teams)[:10]
+
+
+def _search_kits_to_result_dicts(kits_list: list) -> list[dict]:
+    return [
+        {
+            "id": kit.id,
+            "name": kit.name,
+            "main_img_url": kit.main_img_url,
+            "team_name": kit.team.name,
+            "season_year": kit.season.year,
+        }
+        for kit in kits_list
+    ]
 
 
 @api.get(
@@ -1182,118 +1260,27 @@ def search_seasons(
 def search_kits(
     request: HttpRequest, keyword: str | None = Query(None, description="Search query", example="Málaga 2003")
 ) -> list[KitSearchResult]:
-    from django.conf import settings
-
-    search_query = keyword
-    if not search_query:
+    if not keyword:
         return []
-
-    cache_key = generate_cache_key("search_kits", search_query)
+    cache_key = generate_cache_key("search_kits", keyword)
     cached_result = cache.get(cache_key)
-
     if cached_result is not None:
         return cached_result
 
-    # Extract year from query if present
-    year_match = re.search(r"\b(19|20)\d{2}\b", search_query)
-    year = None
-    search_terms = search_query
-
-    if year_match:
-        year = year_match.group(0)
-        # Remove year from search terms
-        search_terms = search_query.replace(year, "").strip()
-
-    # Base query
+    year, search_terms = _search_kits_extract_year_terms(keyword)
     base_kits = Kit.objects.select_related("team", "season").all()
-
-    # Apply year filter first if present
-    if year:
-        year_int = int(year)
-        year_short = str(year_int)[-2:]
-        prev_year = year_int - 1
-
-        year_query = (
-            Q(season__year__exact=str(year_int))
-            | Q(season__year__exact=f"{prev_year}-{year_short}")
-            | Q(season__year__exact=f"{year_int}-{str(year_int + 1)[-2:]}")
-        )
-
-        base_kits = base_kits.filter(year_query)
-
-    # Apply optimized name search
-    if search_terms:
-        # Split search terms
-        terms = search_terms.split()
-
-        # First try: simple icontains search (fastest)
-        simple_matches = base_kits.filter(_unaccent_filter("name", search_terms))
-
-        if simple_matches.exists():
-            kits = simple_matches
-        else:
-            # Second try: individual terms with AND logic
-            term_matches = base_kits
-            for term in terms:
-                if len(term) > 2:  # Only search terms longer than 2 characters
-                    term_matches = term_matches.filter(_unaccent_filter("name", term))
-
-            if term_matches.exists():
-                kits = term_matches
-            else:
-                # Third try: individual terms with OR logic
-                or_query = Q()
-                for term in terms:
-                    if len(term) > 2:
-                        or_query |= _unaccent_filter("name", term)
-
-                if or_query:
-                    kits = base_kits.filter(or_query)
-                else:
-                    kits = base_kits.none()
-    else:
-        kits = base_kits
-
-    # Order by Type_K category and priority for proper sorting
-    # Order: 1. Match kits (non-GK first, then GK), 2. Pre-match, 3. Pre-season, 4. Training, 5. Travel, 6. Jackets
+    base_kits = _search_kits_apply_year_filter(base_kits, year)
+    kits = _search_kits_apply_name_search(base_kits, search_terms)
     kits = kits.select_related("type", "team").order_by(
-        "type__category_order",  # Category order (1=match, 2=prematch, etc.)
-        "type__is_goalkeeper",  # Non-GK first (False < True)
-        "type__order_priority",  # Priority within category (Home=1, Away=2, etc.)
-        "type__name",  # Alphabetical as final tiebreaker
-        "-id",  # Most recent first as final tiebreaker
+        "type__category_order",
+        "type__is_goalkeeper",
+        "type__order_priority",
+        "type__name",
+        "-id",
     )
-
-    # Get more results than needed to allow for reordering
     kits_list = list(kits[:20])
-
-    # Separate primary teams from secondary teams (B, C, youth, women's, etc.)
-    primary_teams = []
-    secondary_teams = []
-
-    for kit in kits_list:
-        if _is_secondary_team(kit.team.name):
-            secondary_teams.append(kit)
-        else:
-            primary_teams.append(kit)
-
-    # Combine: primary teams first, then secondary teams
-    # Take top 10 from the combined list
-    sorted_kits = primary_teams + secondary_teams
-    kits_list = sorted_kits[:10]
-
-    # Format results
-    results = []
-    for kit in kits_list:
-        results.append(
-            {
-                "id": kit.id,
-                "name": kit.name,
-                "main_img_url": kit.main_img_url,
-                "team_name": kit.team.name,
-                "season_year": kit.season.year,
-            }
-        )
+    kits_list = _search_kits_primary_then_secondary(kits_list)
+    results = _search_kits_to_result_dicts(kits_list)
     cache.set(cache_key, results, timeout=settings.CACHE_TIMEOUT_MEDIUM)
     return results
 
@@ -1562,6 +1549,32 @@ def get_kit_json_legacy(
     return get_kit(request, kit_id)
 
 
+def _random_kit_colors_display(kit: Kit) -> str | None:
+    secondary_colors = list(kit.secondary_color.all())
+    secondary_name = secondary_colors[0].name if secondary_colors else None
+    if kit.primary_color and secondary_name:
+        return f"{kit.primary_color.name} / {secondary_name}"
+    if kit.primary_color:
+        return kit.primary_color.name
+    return None
+
+
+def _random_kit_to_dict(kit: Kit) -> dict[str, Any]:
+    return {
+        "id": kit.id,
+        "name": kit.name,
+        "slug": kit.slug,
+        "main_img_url": kit.main_img_url,
+        "team_name": kit.team.name if kit.team else None,
+        "season_year": kit.season.year if kit.season else None,
+        "type_name": kit.type.name if kit.type else None,
+        "brand_name": kit.brand.name if kit.brand else None,
+        "rating": float(kit.rating) if kit.rating else None,
+        "colors": _random_kit_colors_display(kit),
+        "design": kit.design,
+    }
+
+
 @api.get(
     "/random-kits/",
     summary="Get Random Kits",
@@ -1618,60 +1631,27 @@ def get_random_kits(
     """
     from django.core.paginator import Paginator
 
-    # Get random kits that have main images
     kits = (
         Kit.objects.filter(main_img_url__isnull=False, main_img_url__gt="")
         .select_related("team", "season", "type", "brand", "primary_color")
         .prefetch_related("secondary_color")
         .order_by("?")
     )
-
-    # Paginate results
     paginator = Paginator(kits, page_size)
     page_obj = paginator.get_page(page)
-
-    # Serialize kits
-    kits_data = []
-    for kit in page_obj:
-        secondary_color_name = None
-        if kit.secondary_color.exists():
-            secondary_colors = list(kit.secondary_color.all())
-            if secondary_colors:
-                secondary_color_name = secondary_colors[0].name
-
-        if kit.primary_color and secondary_color_name:
-            colors_display = f"{kit.primary_color.name} / {secondary_color_name}"
-        elif kit.primary_color:
-            colors_display = kit.primary_color.name
-        else:
-            colors_display = None
-
-        kits_data.append(
-            {
-                "id": kit.id,
-                "name": kit.name,
-                "slug": kit.slug,
-                "main_img_url": kit.main_img_url,
-                "team_name": kit.team.name if kit.team else None,
-                "season_year": kit.season.year if kit.season else None,
-                "type_name": kit.type.name if kit.type else None,
-                "brand_name": kit.brand.name if kit.brand else None,
-                "rating": float(kit.rating) if kit.rating else None,
-                "colors": colors_display,
-                "design": kit.design,
-            }
-        )
-
+    kits_data = [_random_kit_to_dict(kit) for kit in page_obj]
+    has_next = page_obj.has_next()
+    has_previous = page_obj.has_previous()
     return {
         "kits": kits_data,
         "pagination": {
             "current_page": page_obj.number,
             "total_pages": paginator.num_pages,
             "total_count": paginator.count,
-            "has_next": page_obj.has_next(),
-            "has_previous": page_obj.has_previous(),
-            "next_page": page_obj.next_page_number() if page_obj.has_next() else None,
-            "previous_page": page_obj.previous_page_number() if page_obj.has_previous() else None,
+            "has_next": has_next,
+            "has_previous": has_previous,
+            "next_page": page_obj.next_page_number() if has_next else None,
+            "previous_page": page_obj.previous_page_number() if has_previous else None,
         },
     }
 
