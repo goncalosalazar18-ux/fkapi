@@ -15,6 +15,8 @@ Welcome to the Football Kit Archive API documentation. This index will help you 
 
 The Football Kit Archive API is a Django-based REST API that provides access to a comprehensive database of football (soccer) kit information. The project scrapes and aggregates data from public sources to create a searchable, filterable API for kit enthusiasts, developers, and researchers.
 
+**Relation to FootyCollect:** This API is an external service used by [FootyCollect](https://github.com/sunr4y/FootyCollect) to create and manage kits, import images, and handle all related data. FootyCollect can run without it, but the API is practically essential for the full experience.
+
 **Key Features:**
 - RESTful API with Django Ninja
 - Comprehensive kit database (clubs, seasons, brands, types)
