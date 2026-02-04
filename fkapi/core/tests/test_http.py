@@ -15,9 +15,7 @@ class HttpUtilsTests(SimpleTestCase):
         result = http.get_session(headers={"X-Test": "1"})
 
         self.assertIs(result, session)
-        # Adapter mounted for http/https
-        session.mount.assert_any_call("http://", ANY)
-        session.mount.assert_any_call("https://", ANY)
+        session.mount.assert_called_once_with("https://", ANY)
         # Custom header merged
         self.assertEqual(session.headers["X-Test"], "1")
 

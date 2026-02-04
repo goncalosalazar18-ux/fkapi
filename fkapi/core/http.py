@@ -35,7 +35,6 @@ def get_session(headers: dict | None = None) -> requests.Session:
     """Return a configured requests.Session with retries and default headers."""
     session = requests.Session()
     adapter = HTTPAdapter(max_retries=_retry_strategy())
-    session.mount("http://", adapter)
     session.mount("https://", adapter)
 
     merged_headers = dict(HTTP_DEFAULT_HEADERS)

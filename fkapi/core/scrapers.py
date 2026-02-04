@@ -47,6 +47,18 @@ from .models import Brand, Club, Competition, Kit, Season, Type_K
 logger = logging.getLogger(__name__)
 
 
+def _split_slug_trailing_digits(slug: str) -> tuple[str, str] | None:
+    """Split slug into (base, trailing_digits) if it ends with digits; else None. O(n), no regex."""
+    if not slug or not slug[-1].isdigit():
+        return None
+    i = len(slug) - 1
+    while i >= 0 and slug[i].isdigit():
+        i -= 1
+    if i < len(slug) - 1:
+        return slug[: i + 1], slug[i + 1 :]
+    return None
+
+
 def build_kit_url(slug: str, kit_id: str | None = None) -> str:
     """
     Builds the complete URL for scraping a kit.
@@ -60,18 +72,11 @@ def build_kit_url(slug: str, kit_id: str | None = None) -> str:
     """
     if kit_id:
         return f"{BASE_URL}/{slug}/{kit_id}/"
-    else:
-        # Try to extract kit_id from slug if it ends with digits
-        import re
-
-        match = re.match(r"^(.+?)(\d+)$", slug)
-        if match:
-            base_slug = match.group(1)
-            extracted_id = match.group(2)
-            return f"{BASE_URL}/{base_slug}/{extracted_id}/"
-        else:
-            # Fallback to old format, but this will likely fail
-            return f"{BASE_URL}/{slug}"
+    split = _split_slug_trailing_digits(slug)
+    if split:
+        base_slug, extracted_id = split
+        return f"{BASE_URL}/{base_slug}/{extracted_id}/"
+    return f"{BASE_URL}/{slug}"
 
 
 @contextmanager
@@ -254,6 +259,82 @@ def get_season_e(season_slug: str) -> Season:
     return get_season(season_slug)
 
 
+def _scrape_kit_raise_if_page_not_found(soup: BeautifulSoup, slug: str) -> None:
+    page_not_found_text = soup.find(
+        string=lambda text: text and "The requested page could not be found" in text
+    )
+    if page_not_found_text:
+        logger.warning(f"Page moved: Kit {slug} - 'The requested page could not be found'")
+        raise KitNotFoundError(slug, f"Kit not found: {slug}")
+    if soup.find("h1", string="404 Not Found"):
+        logger.warning(f"404 Not Found: Kit {slug} does not exist")
+        raise KitNotFoundError(slug, f"Kit not found: {slug}")
+
+
+def _scrape_kit_handle_404(
+    soup: BeautifulSoup, slug: str, kit_id: str | None, retry_count: int, max_retries: int
+) -> tuple[str | None, str | None, int]:
+    try:
+        extract_fact_table(soup)
+        logger.warning(f"Got 404 status but found fact table for {slug}. Likely network issue, retrying...")
+        next_count = retry_count + 1
+        if next_count >= max_retries:
+            logger.error(f"Max retries reached for {slug} with 404 status")
+            return None, None, next_count
+        return slug, kit_id, next_count
+    except ValueError:
+        pass
+    logger.warning(f"404 status and no fact table found for {slug}. Trying new URL format...")
+    base_slug, extracted_kit_id = _try_new_url_format(slug)
+    if base_slug and extracted_kit_id:
+        next_count = retry_count + 1
+        if next_count >= max_retries:
+            logger.error(f"Max retries reached for {slug}")
+            return None, None, next_count
+        return base_slug, extracted_kit_id, next_count
+    logger.warning(f"No new URL format available for {slug}. Page likely moved.")
+    raise KitNotFoundError(slug, f"Kit not found: {slug}") from None
+
+
+def _scrape_kit_attempt(
+    slug: str,
+    kit_id: str | None,
+    use_proxy: bool,
+    existing_kit_id: int | None,
+    retry_count: int,
+    max_retries: int,
+) -> tuple[str, Kit | None, str | None, str | None, bool, int]:
+    logger.debug(f"Attempting to scrape kit: {slug} (attempt {retry_count + 1}/{max_retries})")
+    logger.debug(f"Using proxy: {use_proxy}")
+    url = build_kit_url(slug, kit_id)
+    logger.debug(f"Making request to {url}")
+    response = http_get(url, use_proxy=use_proxy)
+    logger.debug(f"Response status code: {response.status_code}")
+    if response.status_code == HTTP_STATUS_FORBIDDEN:
+        if retry_count == max_retries - 1:
+            raise RateLimitExceededError("Rate limit exceeded while scraping kit")
+        logger.warning(MSG_403_RETRY_PROXY)
+        return ("retry_403", None, slug, kit_id, True, retry_count + 1)
+    if response.status_code == 404:
+        logger.warning(f"Received 404 status code for {slug}. This could be network issue or page moved.")
+    else:
+        response.raise_for_status()
+    logger.debug("Parsing HTML response")
+    soup = BeautifulSoup(response.text, HTML_PARSER)
+    _scrape_kit_raise_if_page_not_found(soup, slug)
+    if response.status_code == 404:
+        next_slug, next_kit_id, next_count = _scrape_kit_handle_404(
+            soup, slug, kit_id, retry_count, max_retries
+        )
+        if next_slug is None:
+            return ("done", None, None, None, False, next_count)
+        logger.debug(f"Retrying with new URL format: {slug}/{kit_id}/" if next_kit_id else f"Retrying: {next_slug}")
+        return ("retry_404", None, next_slug, next_kit_id, False, next_count)
+    data = parse_kit_page(soup)
+    kit = ScrapingService.process_kit_data(data, slug, kit_id, use_proxy, existing_kit_id)
+    return ("ok", kit, None, None, False, retry_count)
+
+
 def scrape_kit(
     slug: str, kit_id: str | None = None, use_proxy: bool = False, existing_kit_id: int | None = None
 ) -> Kit | None:
@@ -278,95 +359,15 @@ def scrape_kit(
 
     while retry_count < max_retries:
         try:
-            logger.debug(f"Attempting to scrape kit: {slug} (attempt {retry_count + 1}/{max_retries})")
-            logger.debug(f"Using proxy: {use_proxy}")
-
-            url = build_kit_url(slug, kit_id)
-            logger.debug(f"Making request to {url}")
-            response = http_get(url, use_proxy=use_proxy)
-
-            logger.debug(f"Response status code: {response.status_code}")
-
-            # Handle HTTP errors
-            if response.status_code == HTTP_STATUS_FORBIDDEN:
-                if retry_count == max_retries - 1:
-                    raise RateLimitExceededError("Rate limit exceeded while scraping kit")
-                logger.warning(MSG_403_RETRY_PROXY)
-                use_proxy = True
-                retry_count += 1
-                time.sleep(RETRY_DELAY)
-                continue
-            elif response.status_code == 404:
-                logger.warning(f"Received 404 status code for {slug}. This could be network issue or page moved.")
-                # Don't raise for 404, we'll check the content below
-            else:
-                response.raise_for_status()
-
-            # Parse HTML
-            logger.debug("Parsing HTML response")
-            soup = BeautifulSoup(response.text, HTML_PARSER)
-
-            # Check for actual page not found messages (not network 404s)
-            # Look for specific "The requested page could not be found" message
-            page_not_found_text = soup.find(
-                string=lambda text: text and "The requested page could not be found" in text
+            outcome, kit, next_slug, next_kit_id, use_proxy_next, retry_count = _scrape_kit_attempt(
+                slug, kit_id, use_proxy, existing_kit_id, retry_count, max_retries
             )
-            if page_not_found_text:
-                logger.warning(f"Page moved: Kit {slug} - 'The requested page could not be found'")
-                raise KitNotFoundError(slug, f"Kit not found: {slug}")
-
-            # Check for 404 Not Found in h1 tag (actual page not found)
-            if soup.find("h1", string="404 Not Found"):
-                logger.warning(f"404 Not Found: Kit {slug} does not exist")
-                raise KitNotFoundError(slug, f"Kit not found: {slug}")
-
-            # If we got a 404 status but the page content looks normal, it might be a network issue
-            if response.status_code == 404:
-                # Check if we can find the fact table - if yes, it's probably a network issue
-                try:
-                    extract_fact_table(soup)
-                    logger.warning(f"Got 404 status but found fact table for {slug}. Likely network issue, retrying...")
-                    retry_count += 1
-                    if retry_count < max_retries:
-                        time.sleep(RETRY_DELAY)
-                        continue
-                    else:
-                        logger.error(f"Max retries reached for {slug} with 404 status")
-                        return None
-                except ValueError:
-                    # No fact table found, try the new URL format with ID
-                    logger.warning(f"404 status and no fact table found for {slug}. Trying new URL format...")
-
-                    # Try to extract ID from slug and construct new URL
-                    base_slug, extracted_kit_id = _try_new_url_format(slug)
-                    if base_slug and extracted_kit_id:
-                        logger.debug(f"Retrying with new URL format: {base_slug}/{extracted_kit_id}/")
-                        # Update the slug and kit_id and retry
-                        slug = base_slug
-                        kit_id = extracted_kit_id
-                        retry_count += 1
-                        if retry_count < max_retries:
-                            time.sleep(RETRY_DELAY)
-                            continue
-                        else:
-                            logger.error(f"Max retries reached for {slug}")
-                            return None
-                    else:
-                        # No new format available, probably actually moved
-                        logger.warning(f"No new URL format available for {slug}. Page likely moved.")
-                        raise KitNotFoundError(slug, f"Kit not found: {slug}") from None
-
-            # Parse the page using our helper
-            try:
-                data = parse_kit_page(soup)
-            except ValueError as exc:
-                logger.error(f"Error parsing kit page: {exc}")
-                raise
-
-            # Use service layer to process kit data
-            kit = ScrapingService.process_kit_data(data, slug, kit_id, use_proxy, existing_kit_id)
-            return kit
-
+            if outcome in ("ok", "done"):
+                return kit
+            slug = next_slug or slug
+            kit_id = next_kit_id or kit_id
+            use_proxy = use_proxy_next
+            time.sleep(RETRY_DELAY)
         except requests.exceptions.RequestException as e:
             logger.error(f"Network error scraping {slug}: {str(e)}")
             retry_count += 1
@@ -375,7 +376,6 @@ def scrape_kit(
                 return None
             logger.warning(f"Retrying in 2 seconds... (attempt {retry_count + 1}/{max_retries})")
             time.sleep(2)
-
         except KitNotFoundError:
             raise
         except Exception as e:
@@ -396,17 +396,11 @@ def _try_new_url_format(slug: str) -> tuple[str | None, str | None]:
     Returns:
         tuple[Optional[str], Optional[str]]: (base_slug, kit_id) if conversion is possible, (None, None) otherwise
     """
-    import re
-
-    # Check if slug ends with digits (ID)
-    match = re.match(r"^(.+?)(\d+)$", slug)
-    if match:
-        base_slug = match.group(1)
-        kit_id = match.group(2)
-
+    split = _split_slug_trailing_digits(slug)
+    if split:
+        base_slug, kit_id = split
         print(Fore.CYAN + f"[DEBUG] Converting {slug} -> base: {base_slug}, id: {kit_id}")
         return base_slug, kit_id
-
     return None, None
 
 
@@ -466,6 +460,52 @@ def scrape_competition(slug: str, use_proxy: bool = False) -> Competition | None
             return None
 
 
+def _parse_main_header_logo(main_header: BeautifulSoup) -> tuple[str, str | None]:
+    logo_img = main_header.find("img")
+    if not logo_img or "data-src" not in logo_img.attrs:
+        raise ValueError("Logo image not found")
+    logo_path = logo_img["data-src"].lstrip("/")
+    logo_url = f"{BASE_URL.rstrip('/')}/{logo_path}"
+    if "_l" in logo_url:
+        return logo_url.replace("_l", ""), logo_url
+    return logo_url, None
+
+
+def _scrape_club_apply_logo(club: Club, main_header: BeautifulSoup) -> None:
+    try:
+        logo_url, logo_dark = _parse_main_header_logo(main_header)
+        club.logo = logo_url
+        if logo_dark is not None:
+            club.logo_dark = logo_dark
+    except Exception as e:
+        print(Fore.YELLOW + f"Logo error for {club}: {str(e)}. Using default.")
+        club.logo = DEFAULT_LOGO_URL
+
+
+def _scrape_club_details_fetch(slug: str, use_proxy: bool) -> Club:
+    response = http_get(f"{BASE_URL}/{slug}", use_proxy=use_proxy)
+    if response.status_code == 403:
+        raise RateLimitExceededError("Rate limit exceeded while scraping club")
+    if response.status_code == 404:
+        raise ClubNotFoundError(slug, f"Club not found: {slug}")
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, HTML_PARSER)
+    title_elem = soup.find("span", class_="main-title")
+    if not title_elem:
+        raise ValueError("Club title not found")
+    name = title_elem.text.replace("Kit History", "").strip()
+    main_header = soup.find("div", class_="main-header")
+    if not main_header:
+        raise ValueError("Club header not found")
+    with transaction.atomic():
+        club, created = Club.objects.update_or_create(slug=slug, defaults={"name": name})
+        _scrape_club_apply_logo(club, main_header)
+        club.save()
+    status = "Created" if created else "Updated"
+    print(Fore.GREEN + f"{status} club: {club}")
+    return club
+
+
 def scrape_club_details(slug: str, use_proxy: bool = False) -> Club | None:
     """
     Scrapes club details from footballkitarchive.com using its slug.
@@ -483,75 +523,78 @@ def scrape_club_details(slug: str, use_proxy: bool = False) -> Club | None:
     """
     max_retries = MAX_RETRIES
     retry_count = 0
-
     while retry_count < max_retries:
         print(Fore.MAGENTA + f"Scraping {slug}" + (" with proxy" if use_proxy else ""))
-
         try:
-            # Make request
-            response = http_get(f"{BASE_URL}/{slug}", use_proxy=use_proxy)
-
-            # Handle HTTP errors
-            if response.status_code == 403:
-                raise RateLimitExceededError("Rate limit exceeded while scraping club")
-            elif response.status_code == 404:
-                raise ClubNotFoundError(slug, f"Club not found: {slug}")
-            response.raise_for_status()
-
-            # Parse HTML
-            soup = BeautifulSoup(response.text, HTML_PARSER)
-
-            # Get club name
-            title_elem = soup.find("span", class_="main-title")
-            if not title_elem:
-                raise ValueError("Club title not found")
-
-            name = title_elem.text.replace("Kit History", "").strip()
-
-            # Get club logo
-            main_header = soup.find("div", class_="main-header")
-            if not main_header:
-                raise ValueError("Club header not found")
-
-            # Create or update club
-            with transaction.atomic():
-                club, created = Club.objects.update_or_create(slug=slug, defaults={"name": name})
-
-                try:
-                    logo_img = main_header.find("img")
-                    if logo_img and "data-src" in logo_img.attrs:
-                        logo_path = logo_img["data-src"].lstrip("/")
-                        logo_url = f"{BASE_URL.rstrip('/')}/{logo_path}"
-
-                        # Handle dark logo variant
-                        if "_l" in logo_url:
-                            club.logo_dark = logo_url
-                            club.logo = logo_url.replace("_l", "")
-                        else:
-                            club.logo = logo_url
-                    else:
-                        raise ValueError("Logo image not found")
-
-                except Exception as e:
-                    print(Fore.YELLOW + f"Logo error for {club}: {str(e)}. Using default.")
-                    club.logo = DEFAULT_LOGO_URL
-
-                club.save()
-
-            status = "Created" if created else "Updated"
-            print(Fore.GREEN + f"{status} club: {club}")
-            return club
-
+            return _scrape_club_details_fetch(slug, use_proxy)
         except requests.exceptions.RequestException as e:
             print(Fore.RED + f"Network error scraping club {slug}: {str(e)}")
             retry_count += 1
             if retry_count == max_retries:
                 return None
             time.sleep(2)
-
         except Exception as e:
             print(Fore.RED + f"Error scraping club {slug}: {str(e)}")
             return None
+    return None
+
+
+def _scrape_whole_club_process_season(season_container: BeautifulSoup, club: Club) -> None:
+    season_header = season_container.find("h3")
+    if not season_header:
+        print(Fore.YELLOW + "Season header not found, skipping...")
+        return
+    season_year = season_header.text.strip()
+    print(Fore.YELLOW + f"Processing season {season_year}")
+    try:
+        season = get_season_e(season_year)
+    except Exception as e:
+        print(Fore.RED + f"Error getting season {season_year}: {str(e)}")
+        return
+    details = season_container.find("ul", class_=SECTION_DETAILS_CLASS)
+    if not details or not details.find_all("a"):
+        print(Fore.YELLOW + f"No brand found for season {season_year}")
+        return
+    brand_link = details.find_all("a")[0]
+    brand_slug = brand_link["href"].replace("/", "")
+    brand = _get_or_create_brand(brand_slug)
+    if not brand:
+        print(Fore.YELLOW + f"Could not get/create brand {brand_slug}, skipping season...")
+        return
+    kits_lite = season_container.find_all("div", class_=KIT_CLASS)
+    if not kits_lite:
+        print(Fore.YELLOW + f"No kits found for season {season_year}")
+        return
+    for kit_lite in kits_lite:
+        try:
+            kit = _process_kit(kit_lite, club, season, brand)
+            if kit:
+                print(Fore.GREEN + f"Successfully processed kit: {kit.name}")
+        except Exception as e:
+            print(Fore.RED + f"Error processing kit: {str(e)}")
+    print(Fore.CYAN + f"Completed season {season_year} for {club.name}")
+
+
+def _scrape_whole_club_fetch(club: Club) -> Club:
+    response = http_get(f"{BASE_URL}/{club.slug}", use_proxy=True)
+    if response.status_code == 403:
+        raise RateLimitExceededError("Rate limit exceeded while scraping club")
+    if response.status_code == 404:
+        raise ClubNotFoundError(club.slug, f"Club not found: {club.slug}")
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, HTML_PARSER)
+    container = soup.find("div", class_="archive-content-container")
+    if not container:
+        raise ValueError("Archive content container not found")
+    seasons_container = container.find_all("div", class_=COLLECTION_CONTAINER_CLASS)
+    if not seasons_container:
+        print(Fore.YELLOW + f"No seasons found for {club.name}")
+        return club
+    with transaction.atomic():
+        for season_container in seasons_container:
+            _scrape_whole_club_process_season(season_container, club)
+        print(Fore.GREEN + f"Successfully scraped all kits for {club.name}")
+    return club
 
 
 def scrape_whole_club(club: Club) -> Club | None:
@@ -571,96 +614,20 @@ def scrape_whole_club(club: Club) -> Club | None:
     """
     max_retries = MAX_RETRIES
     retry_count = 0
-
     while retry_count < max_retries:
         print(Fore.MAGENTA + f"Scraping all kits for {club.name} with proxy")
-
         try:
-            # Make request
-            response = http_get(f"{BASE_URL}/{club.slug}", use_proxy=True)
-
-            # Handle HTTP errors
-            if response.status_code == 403:
-                raise RateLimitExceededError("Rate limit exceeded while scraping club")
-            elif response.status_code == 404:
-                raise ClubNotFoundError(club.slug, f"Club not found: {club.slug}")
-            response.raise_for_status()
-
-            # Parse HTML
-            soup = BeautifulSoup(response.text, HTML_PARSER)
-            container = soup.find("div", class_="archive-content-container")
-            if not container:
-                raise ValueError("Archive content container not found")
-
-            seasons_container = container.find_all("div", class_=COLLECTION_CONTAINER_CLASS)
-            if not seasons_container:
-                print(Fore.YELLOW + f"No seasons found for {club.name}")
-                return club
-
-            # Process each season
-            with transaction.atomic():
-                for season_container in seasons_container:
-                    # Get season year from h3
-                    season_header = season_container.find("h3")
-                    if not season_header:
-                        print(Fore.YELLOW + "Season header not found, skipping...")
-                        continue
-
-                    season_year = season_header.text.strip()
-                    print(Fore.YELLOW + f"Processing season {season_year}")
-
-                    # Get season
-                    try:
-                        season = get_season_e(season_year)
-                    except Exception as e:
-                        print(Fore.RED + f"Error getting season {season_year}: {str(e)}")
-                        continue
-
-                    # Get brand from section details
-                    details = season_container.find("ul", class_=SECTION_DETAILS_CLASS)
-                    if not details or not details.find_all("a"):
-                        print(Fore.YELLOW + f"No brand found for season {season_year}")
-                        continue
-
-                    brand_link = details.find_all("a")[0]
-                    brand_slug = brand_link["href"].replace("/", "")
-
-                    # Get brand object
-                    brand = _get_or_create_brand(brand_slug)
-                    if not brand:
-                        print(Fore.YELLOW + f"Could not get/create brand {brand_slug}, skipping season...")
-                        continue
-
-                    # Process each kit in the season
-                    kits_lite = season_container.find_all("div", class_=KIT_CLASS)
-                    if not kits_lite:
-                        print(Fore.YELLOW + f"No kits found for season {season_year}")
-                        continue
-
-                    for kit_lite in kits_lite:
-                        try:
-                            kit = _process_kit(kit_lite, club, season, brand)
-                            if kit:
-                                print(Fore.GREEN + f"Successfully processed kit: {kit.name}")
-                        except Exception as e:
-                            print(Fore.RED + f"Error processing kit: {str(e)}")
-                            continue
-
-                    print(Fore.CYAN + f"Completed season {season_year} for {club.name}")
-
-                print(Fore.GREEN + f"Successfully scraped all kits for {club.name}")
-                return club
-
+            return _scrape_whole_club_fetch(club)
         except requests.exceptions.RequestException as e:
             print(Fore.RED + f"Network error scraping {club.name}: {str(e)}")
             retry_count += 1
             if retry_count == max_retries:
                 return None
             time.sleep(2)
-
         except Exception as e:
             print(Fore.RED + f"Error scraping {club.name}: {str(e)}")
             return None
+    return None
 
 
 def _get_or_create_brand(brand_slug: str) -> Brand | None:
@@ -726,6 +693,112 @@ def _process_kit(kit_element: BeautifulSoup, club: Club, season: Season, brand: 
         return None
 
 
+def _scrape_kit_lite_parse_table(
+    soup: BeautifulSoup, season: Season, type_k: Type_K
+) -> dict[str, Any]:
+    table = soup.find("table", class_="fact-table")
+    if not table:
+        raise ValueError("Kit fact table not found")
+    table_rows = table.find_all("tr")
+    kit_name_cell = table_rows[0].find_all("td")[1] if table_rows else None
+    if not kit_name_cell:
+        raise ValueError("Kit name not found")
+    kit_name = f"{kit_name_cell.text.strip()} {season} {type_k}"
+    design = None
+    for row in table_rows:
+        header = row.find("td")
+        if header and header.text.strip() == "Design":
+            design = row.find_all("td")[1].text.strip()
+            break
+    colors_data = None
+    for row in table_rows:
+        header = row.find("td")
+        if header and header.text.strip() == "Colors":
+            colors_data = row.find_all("td")[1].text.strip()
+            break
+    rating_span = soup.find("span", id="rating")
+    rating_details = soup.find("span", id="rating-details-no")
+    rating = (
+        float(rating_span.text.strip())
+        if (rating_span and rating_span.text.strip() and not rating_details)
+        else 0.0
+    )
+    main_img = soup.find("img", class_="top-image")
+    if not main_img or "data-src" not in main_img.attrs:
+        raise ValueError("Main image not found")
+    return {
+        "kit_name": kit_name,
+        "design": design,
+        "colors_data": colors_data,
+        "rating": rating,
+        "main_img_url": main_img["data-src"],
+        "table_rows": table_rows,
+    }
+
+
+def _scrape_kit_lite_save_and_enrich(
+    slug: str,
+    kit_id: str | None,
+    club: Club,
+    season: Season,
+    type_k: Type_K,
+    brand: Brand,
+    parsed: dict[str, Any],
+) -> Kit:
+    from core.services.kits_service import KitsService
+
+    kit_name = parsed["kit_name"]
+    design = parsed["design"]
+    colors_data = parsed["colors_data"]
+    rating = parsed["rating"]
+    main_img_url = parsed["main_img_url"]
+    table_rows = parsed["table_rows"]
+    kit, created = Kit.objects.get_or_create(
+        slug=slug,
+        defaults={
+            "name": kit_name,
+            "team": club,
+            "season": season,
+            "type": type_k,
+            "brand": brand,
+            "rating": rating,
+            "kit_id": kit_id,
+            "main_img_url": main_img_url,
+            "design": design,
+        },
+    )
+    if not created:
+        kit.name = kit_name
+        kit.team = club
+        kit.season = season
+        kit.type = type_k
+        kit.brand = brand
+        kit.rating = rating
+        kit.main_img_url = main_img_url
+        kit.design = design
+        if kit_id:
+            kit.kit_id = kit_id
+        kit.save()
+    competitions_cell = None
+    for row in table_rows:
+        header = row.find("td")
+        if header and header.text.strip() == "League":
+            competitions_cell = row.find_all("td")[1]
+            break
+    if competitions_cell:
+        kit.competition.clear()
+        KitsService.process_competitions(kit, str(competitions_cell), slug)
+    if colors_data:
+        kit.secondary_color.clear()
+        kit.primary_color = None
+        KitsService.process_colors(kit, colors_data)
+    if created:
+        print(Fore.GREEN + f"Created new kit: {kit}")
+    else:
+        print(Fore.CYAN + f"Updated existing kit: {kit}")
+    return kit
+
+
 def scrape_kit_lite(
     slug: str,
     brand: Brand,
@@ -773,115 +846,11 @@ def scrape_kit_lite(
             # Parse HTML
             soup = BeautifulSoup(response.text, HTML_PARSER)
 
-            # Get fact table
-            table = soup.find("table", class_="fact-table")
-            if not table:
-                raise ValueError("Kit fact table not found")
-
-            table_rows = table.find_all("tr")
-
-            # Get kit name from table
-            kit_name_cell = table_rows[0].find_all("td")[1]
-            if not kit_name_cell:
-                raise ValueError("Kit name not found")
-
-            kit_name = f"{kit_name_cell.text.strip()} {season} {type_k}"
-
-            # Get design (if available)
-            design = None
-            for row in table_rows:
-                header = row.find("td")
-                if header and header.text.strip() == "Design":
-                    design = row.find_all("td")[1].text.strip()
-                    break
-
-            # Get colors (if available)
-            colors_data = None
-            for row in table_rows:
-                header = row.find("td")
-                if header and header.text.strip() == "Colors":
-                    colors_data = row.find_all("td")[1].text.strip()
-                    break
-
-            # Get rating
-            rating_span = soup.find("span", id="rating")
-            rating_details = soup.find("span", id="rating-details-no")
-            if rating_span and rating_span.text.strip() and not rating_details:
-                rating = float(rating_span.text.strip())
-            else:
-                rating = 0.0
-
-            # Get main image
-            main_img = soup.find("img", class_="top-image")
-            if not main_img or "data-src" not in main_img.attrs:
-                raise ValueError("Main image not found")
-
-            main_img_url = main_img["data-src"]
-
-            # Create kit and process competitions atomically
+            parsed = _scrape_kit_lite_parse_table(soup, season, type_k)
             with transaction.atomic():
-                # Create or get kit by slug (slug is unique)
-                kit, created = Kit.objects.get_or_create(
-                    slug=slug,
-                    defaults={
-                        "name": kit_name,
-                        "team": club,
-                        "season": season,
-                        "type": type_k,
-                        "brand": brand,
-                        "rating": rating,
-                        "kit_id": kit_id,
-                        "main_img_url": main_img_url,
-                        "design": design,
-                    },
+                return _scrape_kit_lite_save_and_enrich(
+                    slug, kit_id, club, season, type_k, brand, parsed
                 )
-
-                # Update kit if it already existed
-                if not created:
-                    # Update all fields to ensure we have the latest data
-                    kit.name = kit_name
-                    kit.team = club
-                    kit.season = season
-                    kit.type = type_k
-                    kit.brand = brand
-                    kit.rating = rating
-                    kit.main_img_url = main_img_url
-                    kit.design = design
-                    if kit_id:
-                        kit.kit_id = kit_id
-                    kit.save()
-
-                # Process competitions (for both new and existing kits)
-                competitions_cell = None
-                for row in table_rows:
-                    header = row.find("td")
-                    if header and header.text.strip() == "League":
-                        competitions_cell = row.find_all("td")[1]
-                        break
-
-                if competitions_cell:
-                    competitions_html = str(competitions_cell)
-                    from core.services.kits_service import KitsService
-
-                    # Clear existing competitions and re-process
-                    kit.competition.clear()
-                    KitsService.process_competitions(kit, competitions_html, slug)
-
-                # Process colors if available (for both new and existing kits)
-                if colors_data:
-                    from core.services.kits_service import KitsService
-
-                    # Clear existing colors and re-process
-                    kit.secondary_color.clear()
-                    kit.primary_color = None
-                    KitsService.process_colors(kit, colors_data)
-
-                if created:
-                    print(Fore.GREEN + f"Created new kit: {kit}")
-                else:
-                    print(Fore.CYAN + f"Updated existing kit: {kit}")
-
-                return kit
 
         except requests.exceptions.RequestException as e:
             print(Fore.RED + f"Network error scraping kit {slug}: {str(e)}")
@@ -893,6 +862,41 @@ def scrape_kit_lite(
         except Exception as e:
             print(Fore.RED + f"Error scraping kit {slug}: {str(e)}")
             return None
+
+
+def _scrape_brand_apply_logo(brand: Brand, main_header: BeautifulSoup) -> None:
+    try:
+        logo_url, logo_dark = _parse_main_header_logo(main_header)
+        brand.logo = logo_url
+        if logo_dark is not None:
+            brand.logo_dark = logo_dark
+    except Exception as e:
+        print(Fore.YELLOW + f"Logo error for {brand}: {str(e)}. Using default.")
+        brand.logo = f"{BASE_URL}/static/logos/not_found.png"
+
+
+def _scrape_brand_fetch(slug: str, use_proxy: bool) -> Brand:
+    response = http_get(f"{BASE_URL}/{slug}", use_proxy=use_proxy)
+    if response.status_code == 403:
+        raise RateLimitExceededError("Rate limit exceeded while scraping brand")
+    if response.status_code == 404:
+        raise ScrapingError(f"Brand not found: {slug}", slug)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, HTML_PARSER)
+    title_elem = soup.find("span", class_="main-title")
+    if not title_elem:
+        raise ValueError("Brand title not found")
+    name = title_elem.text.replace("Football Kit History", "").strip()
+    main_header = soup.find("div", class_="main-header")
+    if not main_header:
+        raise ValueError("Brand header not found")
+    with transaction.atomic():
+        brand, created = Brand.objects.get_or_create(slug=slug, defaults={"name": name})
+        _scrape_brand_apply_logo(brand, main_header)
+        brand.save()
+    status = "Created" if created else "Updated"
+    print(Fore.GREEN + f"{status} brand: {brand}")
+    return brand
 
 
 def scrape_brand(slug: str, use_proxy: bool = False) -> Brand | None:
@@ -912,73 +916,97 @@ def scrape_brand(slug: str, use_proxy: bool = False) -> Brand | None:
     """
     max_retries = MAX_RETRIES
     retry_count = 0
-
     while retry_count < max_retries:
         try:
-            # Make request
-            response = http_get(f"{BASE_URL}/{slug}", use_proxy=use_proxy)
-
-            # Handle HTTP errors
-            if response.status_code == 403:
-                raise RateLimitExceededError("Rate limit exceeded while scraping brand")
-            elif response.status_code == 404:
-                raise ScrapingError(f"Brand not found: {slug}", slug)
-            response.raise_for_status()
-
-            # Parse HTML
-            soup = BeautifulSoup(response.text, HTML_PARSER)
-
-            # Get brand name
-            title_elem = soup.find("span", class_="main-title")
-            if not title_elem:
-                raise ValueError("Brand title not found")
-
-            name = title_elem.text.replace("Football Kit History", "").strip()
-
-            # Get brand logo
-            main_header = soup.find("div", class_="main-header")
-            if not main_header:
-                raise ValueError("Brand header not found")
-
-            # Create or update brand
-            with transaction.atomic():
-                brand, created = Brand.objects.get_or_create(slug=slug, defaults={"name": name})
-
-                try:
-                    logo_img = main_header.find("img")
-                    if logo_img and "data-src" in logo_img.attrs:
-                        logo_path = logo_img["data-src"].lstrip("/")
-                        logo_url = f"{BASE_URL.rstrip('/')}/{logo_path}"
-
-                        # Handle dark logo variant
-                        if "_l" in logo_url:
-                            brand.logo_dark = logo_url
-                            brand.logo = logo_url.replace("_l", "")
-                        else:
-                            brand.logo = logo_url
-                    else:
-                        raise ValueError("Logo image not found")
-
-                except Exception as e:
-                    print(Fore.YELLOW + f"Logo error for {brand}: {str(e)}. Using default.")
-                    brand.logo = f"{BASE_URL}/static/logos/not_found.png"
-
-                brand.save()
-
-            status = "Created" if created else "Updated"
-            print(Fore.GREEN + f"{status} brand: {brand}")
-            return brand
-
+            return _scrape_brand_fetch(slug, use_proxy)
         except requests.exceptions.RequestException as e:
             print(Fore.RED + f"Network error scraping brand {slug}: {str(e)}")
             retry_count += 1
             if retry_count == max_retries:
                 return None
             time.sleep(2)
-
         except Exception as e:
             print(Fore.RED + f"Error scraping brand {slug}: {str(e)}")
             return None
+    return None
+
+
+def _scrape_latest_update_existing_kit_id(clean_slug: str, kit_id: str | None, existing_kit: Kit) -> None:
+    if not kit_id:
+        return
+    try:
+        full_kit = Kit.objects.get(id=existing_kit.id)
+        if not full_kit.kit_id:
+            print(Fore.YELLOW + f"Updating kit_id for existing kit: {clean_slug} -> {kit_id}")
+            full_kit.kit_id = kit_id
+            full_kit.save()
+    except Exception:
+        pass
+
+
+def _scrape_latest_collect_one_kit(
+    kit: Any,
+) -> tuple[int, tuple[str, str | None] | None]:
+    kit_link = kit.find("a")
+    if not kit_link or "href" not in kit_link.attrs:
+        return 0, None
+    slug_parts = kit_link["href"].strip("/").split("/")
+    clean_slug = slug_parts[0]
+    kit_id = slug_parts[1] if len(slug_parts) > 1 else None
+    try:
+        existing_kit = Kit.objects.filter(slug=clean_slug).only("id", "slug").first()
+        if existing_kit:
+            _scrape_latest_update_existing_kit_id(clean_slug, kit_id, existing_kit)
+            return 1, None
+        return 0, (clean_slug, kit_id)
+    except Exception as e:
+        logger.error(f"Error checking kit {clean_slug}: {str(e)}")
+        return 0, None
+
+
+def _scrape_latest_collect_kits(
+    kits: list,
+) -> tuple[int, list[tuple[str, str | None]]]:
+    existing_kits_count = 0
+    new_kits: list[tuple[str, str | None]] = []
+    for kit in kits:
+        existing_delta, new_kit = _scrape_latest_collect_one_kit(kit)
+        existing_kits_count += existing_delta
+        if new_kit:
+            new_kits.append(new_kit)
+    return existing_kits_count, new_kits
+
+
+def _scrape_lastest_page(page: int, use_proxy: bool) -> tuple[bool, bool]:
+    from core.tasks import scrape_kit_task
+    from core.utils.celery_utils import execute_task_async
+
+    response = http_get(f"{BASE_URL}{LATEST_PAGE_URL}{page}", use_proxy=use_proxy)
+    if response.status_code == HTTP_STATUS_FORBIDDEN:
+        print(Fore.RED + "Received 403 status code. Retrying with a new proxy.")
+        raise RateLimitExceededError("403 on latest page")
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, HTML_PARSER)
+    kit_container = soup.find("div", class_=KIT_CONTAINER_CLASS)
+    if not kit_container:
+        raise ValueError("Kit container not found")
+    kits = kit_container.find_all("div", class_=KIT_CLASS)
+    if not kits:
+        print(Fore.YELLOW + f"No kits found on page {page}")
+        return True, True
+    existing_kits_count, new_kits = _scrape_latest_collect_kits(kits)
+    if existing_kits_count == len(kits):
+        print(Fore.CYAN + f"All kits on page {page} already exist in database")
+        return True, True
+    if new_kits:
+        print(Fore.YELLOW + f"Found {len(new_kits)} new kits on page {page}, processing in parallel...")
+        for clean_slug, kit_id in new_kits:
+            try:
+                execute_task_async(scrape_kit_task, clean_slug, kit_id=kit_id, use_proxy=use_proxy)
+            except Exception as e:
+                logger.error(f"Error queuing kit {clean_slug} for processing: {str(e)}")
+    print(Fore.GREEN + f"Successfully queued {len(new_kits)} new kits from page {page}")
+    return True, False
 
 
 def scrape_lastest(page: int = 1, use_proxy: bool = False) -> tuple[bool, bool]:
@@ -998,98 +1026,18 @@ def scrape_lastest(page: int = 1, use_proxy: bool = False) -> tuple[bool, bool]:
         requests.exceptions.RequestException: For network-related errors
         ValueError: For invalid data in the response
     """
-    from core.tasks import scrape_kit_task
-    from core.utils.celery_utils import execute_task_async
-
     max_retries = MAX_RETRIES
     retry_count = 0
-
     while retry_count < max_retries:
         try:
-            # Make request
-            response = http_get(f"{BASE_URL}{LATEST_PAGE_URL}{page}", use_proxy=use_proxy)
-
-            # Handle HTTP errors
-            if response.status_code == HTTP_STATUS_FORBIDDEN:
-                print(Fore.RED + "Received 403 status code. Retrying with a new proxy.")
-                use_proxy = True
-                retry_count += 1
-                time.sleep(RETRY_DELAY)
-                continue
-            response.raise_for_status()
-
-            # Parse HTML
-            soup = BeautifulSoup(response.text, HTML_PARSER)
-            kit_container = soup.find("div", class_=KIT_CONTAINER_CLASS)
-            if not kit_container:
-                raise ValueError("Kit container not found")
-
-            kits = kit_container.find_all("div", class_=KIT_CLASS)
-            if not kits:
-                print(Fore.YELLOW + f"No kits found on page {page}")
-                return True, True  # Consider empty page as success with all kits existing
-
-            # Process each kit
-            existing_kits_count = 0
-            new_kits = []
-
-            for kit in kits:
-                kit_link = kit.find("a")
-                if not kit_link or "href" not in kit_link.attrs:
-                    continue
-
-                slug = kit_link["href"]
-
-                # Split by "/" and extract slug and kit_id
-                slug_parts = slug.strip("/").split("/")
-                clean_slug = slug_parts[0]
-                kit_id = slug_parts[1] if len(slug_parts) > 1 else None
-
-                try:
-                    # Check if kit already exists (slug is already cleaned)
-                    # Use only() to avoid loading kit_id if column doesn't exist yet
-                    existing_kit = Kit.objects.filter(slug=clean_slug).only("id", "slug").first()
-                    if existing_kit:
-                        existing_kits_count += 1
-                        # Update kit_id if it's missing and we have one
-                        # Reload full object only if we need to update kit_id
-                        if kit_id:
-                            try:
-                                full_kit = Kit.objects.get(id=existing_kit.id)
-                                if not full_kit.kit_id:
-                                    print(Fore.YELLOW + f"Updating kit_id for existing kit: {clean_slug} -> {kit_id}")
-                                    full_kit.kit_id = kit_id
-                                    full_kit.save()
-                            except Exception:
-                                # kit_id column doesn't exist yet, skip update
-                                pass
-                        continue
-
-                    # Add to new kits list for parallel processing
-                    new_kits.append((clean_slug, kit_id))
-
-                except Exception as e:
-                    logger.error(f"Error checking kit {clean_slug}: {str(e)}")
-                    continue
-
-            # If all kits exist, return early
-            if existing_kits_count == len(kits):
-                print(Fore.CYAN + f"All kits on page {page} already exist in database")
-                return True, True
-
-            # Process new kits in parallel
-            if new_kits:
-                print(Fore.YELLOW + f"Found {len(new_kits)} new kits on page {page}, processing in parallel...")
-                for clean_slug, kit_id in new_kits:
-                    try:
-                        execute_task_async(scrape_kit_task, clean_slug, kit_id=kit_id, use_proxy=use_proxy)
-                    except Exception as e:
-                        logger.error(f"Error queuing kit {clean_slug} for processing: {str(e)}")
-                        continue
-
-            print(Fore.GREEN + f"Successfully queued {len(new_kits)} new kits from page {page}")
-            return True, False
-
+            return _scrape_lastest_page(page, use_proxy)
+        except RateLimitExceededError:
+            use_proxy = True
+            retry_count += 1
+            if retry_count >= max_retries:
+                print(Fore.RED + f"Failed to scrape page {page} after {max_retries} attempts")
+                return False, False
+            time.sleep(RETRY_DELAY)
         except requests.exceptions.RequestException as e:
             print(Fore.RED + f"Network error on page {page}, attempt {retry_count + 1}: {str(e)}")
             retry_count += 1
@@ -1097,10 +1045,34 @@ def scrape_lastest(page: int = 1, use_proxy: bool = False) -> tuple[bool, bool]:
                 print(Fore.RED + f"Failed to scrape page {page} after {max_retries} attempts")
                 return False, False
             time.sleep(2)
-
         except Exception as e:
             print(Fore.RED + f"Unexpected error on page {page}: {str(e)}")
             return False, False
+    return False, False
+
+
+def _scrape_latest_pages_process_page(
+    page: int, page_end: int, use_proxy: bool
+) -> tuple[int, int, bool]:
+    print(Fore.CYAN + f"\nProcessing page {page} of {page_end}")
+    success, all_kits_exist = scrape_lastest(page, use_proxy)
+    if success:
+        if all_kits_exist:
+            print(Fore.GREEN + f"Successfully scraped page {page} (all kits already exist)")
+            print(Fore.CYAN + "Stopping scrape as all kits on this page already exist in database")
+            return 1, 0, True
+        print(Fore.GREEN + f"Successfully scraped page {page}")
+        return 1, 0, False
+    print(Fore.RED + f"Failed to scrape page {page}")
+    return 0, 1, False
+
+
+def _scrape_latest_pages_should_delay(
+    page: int, page_end: int, reverse_order: bool
+) -> bool:
+    return (reverse_order and page > page_end) or (
+        not reverse_order and page < page_end
+    )
 
 
 def scrape_latest_pages(
@@ -1130,8 +1102,6 @@ def scrape_latest_pages(
 
     success_count = 0
     failure_count = 0
-
-    # Determine page range and direction
     if reverse_order:
         page_range = range(page_start, page_end - 1, -1)
         print(Fore.CYAN + f"Starting backward scrape of pages {page_start} down to {page_end}")
@@ -1143,36 +1113,23 @@ def scrape_latest_pages(
         if progress_callback:
             progress_callback(page, page_start, page_end)
         try:
-            print(Fore.CYAN + f"\nProcessing page {page} of {page_end}")
-
-            success, all_kits_exist = scrape_lastest(page, use_proxy)
-            if success:
-                success_count += 1
-                if all_kits_exist:
-                    print(Fore.GREEN + f"Successfully scraped page {page} (all kits already exist)")
-                    print(Fore.CYAN + "Stopping scrape as all kits on this page already exist in database")
-                    break
-                else:
-                    print(Fore.GREEN + f"Successfully scraped page {page}")
-            else:
-                failure_count += 1
-                print(Fore.RED + f"Failed to scrape page {page}")
-
-            # Add delay between pages (except for the last page)
-            if (reverse_order and page > page_end) or (not reverse_order and page < page_end):
+            succ, fail, stop = _scrape_latest_pages_process_page(
+                page, page_end, use_proxy
+            )
+            success_count += succ
+            failure_count += fail
+            if stop:
+                break
+            if _scrape_latest_pages_should_delay(page, page_end, reverse_order):
                 print(Fore.CYAN + f"Waiting {delay} seconds before next page...")
                 time.sleep(delay)
-
         except Exception as e:
             failure_count += 1
             print(Fore.RED + f"Error processing page {page}: {str(e)}")
-            continue
 
-    # Print summary
     print(Fore.CYAN + "\nScraping completed!")
     print(f"Pages processed successfully: {success_count}")
     print(f"Pages failed: {failure_count}")
-
     return success_count, failure_count
 
 
@@ -1240,6 +1197,89 @@ def scrape_user_info_api(userid: int) -> dict | None:
         return None
 
 
+CUSTOM_FIELDS = ["custom_team", "custom_type", "custom_season", "custom_league", "custom_brand"]
+
+
+def _scrape_user_collection_fetch_page(
+    url: str, page: int, headers: dict, total_skipped: dict
+) -> tuple[list, bool, int, int, dict]:
+    import json
+
+    response = http_get(url, headers=headers, use_proxy=True)
+    response.raise_for_status()
+    try:
+        data = response.json()
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON response for page {page}: {str(e)}")
+        raise ScrapingError(f"Invalid JSON response from API: {str(e)}") from e
+    if not isinstance(data, dict):
+        raise ScrapingError("API response is not a dictionary")
+    if not data.get("success", False):
+        error_msg = data.get("error", "Unknown error")
+        logger.error(f"API returned success=false for page {page}: {error_msg}")
+        raise ScrapingError(f"API returned error: {error_msg}")
+    entries = data.get("entries", [])
+    if not isinstance(entries, list):
+        raise ScrapingError("API response 'entries' is not a list")
+    filtered_entries, skipped_custom = _scrape_user_collection_filter_entries(
+        entries, total_skipped
+    )
+    more_available = data.get("more_available", False)
+    sample = entries[0] if (entries and len(filtered_entries) == 0) else {}
+    return filtered_entries, more_available, len(entries), skipped_custom, sample
+
+
+def _scrape_user_collection_filter_entries(
+    entries: list, total_skipped: dict
+) -> tuple[list, int]:
+    filtered_entries = []
+    skipped_custom = 0
+    for entry in entries:
+        entry_id = entry.get("id", "unknown")
+        has_custom = any(entry.get(f) is not None for f in CUSTOM_FIELDS)
+        if has_custom:
+            skipped_custom += 1
+            total_skipped["custom"] += 1
+            found = [f for f in CUSTOM_FIELDS if entry.get(f) is not None]
+            logger.debug(f"Skipping entry {entry_id} - has custom fields: {found}")
+            continue
+        cleaned = _clean_collection_entry(entry)
+        enriched = _enrich_collection_entry(cleaned)
+        filtered_entries.append(enriched)
+    return filtered_entries, skipped_custom
+
+
+def _scrape_user_collection_apply_page(
+    all_entries: list,
+    filtered_entries: list,
+    more_available: bool,
+    entries_len: int,
+    skipped_custom: int,
+    sample: dict,
+    page: int,
+) -> bool:
+    if entries_len > 0:
+        logger.info(
+            f"Page {page} filtering: {entries_len} total entries, "
+            f"{skipped_custom} skipped (custom fields only), "
+            f"{len(filtered_entries)} kept (unwanted fields removed from response)"
+        )
+        if len(filtered_entries) == 0 and sample and any(sample.get(f) for f in CUSTOM_FIELDS):
+            logger.warning(
+                f"All entries on page {page} were filtered. "
+                f"Sample entry {sample.get('id')} has custom_* fields (not null)"
+            )
+        logger.info(
+            f"Page {page}: Retrieved {entries_len} entries, {skipped_custom} skipped (custom fields), "
+            f"{len(filtered_entries)} kept (total: {len(all_entries) + len(filtered_entries)})"
+        )
+    all_entries.extend(filtered_entries)
+    if not more_available:
+        logger.info(f"No more pages available. Total entries: {len(all_entries)}")
+        return True
+    return False
+
+
 def scrape_user_collection_api(userid: int) -> dict:
     """
     Scrape user collection using the collection-feed.php API.
@@ -1255,115 +1295,32 @@ def scrape_user_collection_api(userid: int) -> dict:
         ScrapingError: If the API request fails or returns invalid data
         RateLimitExceededError: If rate limit is exceeded
     """
-    import json
-
     all_entries = []
     page = 1
     limit = 20
-
-    # Headers with English language to avoid format changes (GK → pt, etc.)
     headers = {
         "Accept": "*/*",
-        "Accept-Language": "en-US,en;q=0.9",  # IMPORTANT: English to avoid format changes
+        "Accept-Language": "en-US,en;q=0.9",
         "Referer": f"https://www.footballkitarchive.com/collection/{userid}",
         "User-Agent": HTTP_DEFAULT_HEADERS["User-Agent"],
     }
-
     logger.info(f"Starting to scrape user collection for userid: {userid}")
     total_skipped = {"custom": 0, "purchase": 0, "gender": 0}
-
     user_info = scrape_user_info_api(userid)
 
     while True:
         url = f"{BASE_URL}/api/collection-feed.php?limit={limit}&page={page}&sort=latest&userid={userid}"
         logger.debug(f"Fetching page {page} from: {url}")
-
         try:
-            # Use proxy rotator to avoid IP bans
-            response = http_get(url, headers=headers, use_proxy=True)
-            response.raise_for_status()
-
-            # Parse JSON response
-            try:
-                data = response.json()
-            except json.JSONDecodeError as e:
-                logger.error(f"Invalid JSON response for page {page}: {str(e)}")
-                raise ScrapingError(f"Invalid JSON response from API: {str(e)}") from e
-
-            # Validate response structure
-            if not isinstance(data, dict):
-                raise ScrapingError("API response is not a dictionary")
-
-            if not data.get("success", False):
-                error_msg = data.get("error", "Unknown error")
-                logger.error(f"API returned success=false for page {page}: {error_msg}")
-                raise ScrapingError(f"API returned error: {error_msg}")
-
-            # Extract entries
-            entries = data.get("entries", [])
-            if not isinstance(entries, list):
-                raise ScrapingError("API response 'entries' is not a list")
-
-            # Filter and clean entries
-            filtered_entries = []
-            skipped_custom = 0
-
-            for entry in entries:
-                entry_id = entry.get("id", "unknown")
-
-                # ONLY skip entire entry if it has any custom fields that are not null
-                custom_fields = ["custom_team", "custom_type", "custom_season", "custom_league", "custom_brand"]
-                has_custom = any(entry.get(field) is not None for field in custom_fields)
-                if has_custom:
-                    skipped_custom += 1
-                    total_skipped["custom"] += 1
-                    found_custom = [f for f in custom_fields if entry.get(f) is not None]
-                    logger.debug(f"Skipping entry {entry_id} - has custom fields: {found_custom}")
-                    continue
-
-                # Clean entry: remove unwanted fields (purchase/value, gender, printing_type, user block)
-                # but KEEP the entry itself
-                cleaned_entry = _clean_collection_entry(entry)
-                # Enrich entry with Brand and Club data (logos, etc.)
-                enriched_entry = _enrich_collection_entry(cleaned_entry)
-                filtered_entries.append(enriched_entry)
-
-            # Log filtering statistics
-            if len(entries) > 0:
-                logger.info(
-                    f"Page {page} filtering: {len(entries)} total entries, "
-                    f"{skipped_custom} skipped (custom fields only), "
-                    f"{len(filtered_entries)} kept (unwanted fields removed from response)"
-                )
-
-                # If all entries were filtered, show example of why
-                if len(filtered_entries) == 0 and len(entries) > 0:
-                    sample_entry = entries[0]
-                    if any(
-                        sample_entry.get(f) is not None
-                        for f in ["custom_team", "custom_type", "custom_season", "custom_league", "custom_brand"]
-                    ):
-                        logger.warning(
-                            f"All entries on page {page} were filtered. Sample entry {sample_entry.get('id')} "
-                            f"was filtered because it has custom_* fields (not null)"
-                        )
-
-            all_entries.extend(filtered_entries)
-            logger.info(
-                f"Page {page}: Retrieved {len(entries)} entries, {skipped_custom} skipped (custom fields), "
-                f"{len(filtered_entries)} kept (total: {len(all_entries)})"
+            filtered_entries, more_available, entries_len, skipped_custom, sample = (
+                _scrape_user_collection_fetch_page(url, page, headers, total_skipped)
             )
-
-            # Check if there are more pages
-            more_available = data.get("more_available", False)
-            if not more_available:
-                logger.info(f"No more pages available. Total entries: {len(all_entries)}")
+            if _scrape_user_collection_apply_page(
+                all_entries, filtered_entries, more_available, entries_len, skipped_custom, sample, page
+            ):
                 break
-
             page += 1
-            # Small delay between pages to avoid rate limiting
             time.sleep(0.5)
-
         except requests.exceptions.HTTPError as e:
             if e.response and e.response.status_code == 403:
                 raise RateLimitExceededError("Rate limit exceeded while scraping user collection") from e
@@ -1373,17 +1330,14 @@ def scrape_user_collection_api(userid: int) -> dict:
             logger.error(f"Request error fetching page {page}: {str(e)}")
             raise ScrapingError(f"Request error fetching page {page}: {str(e)}") from e
 
-    # Return complete response structure with all entries
     result = {
         "success": True,
         "entries": all_entries,
         "total_entries": len(all_entries),
         "pages_scraped": page,
     }
-
     if user_info:
         result["user"] = user_info
-
     logger.info(
         f"Successfully scraped {len(all_entries)} entries from {page} pages for userid: {userid}. "
         f"Filtered out: {total_skipped['custom']} entries (had custom_* fields)"
@@ -1443,6 +1397,90 @@ def _clean_collection_entry(entry: dict) -> dict:
     return cleaned
 
 
+def _enrich_kit_brand(brand_name: str) -> dict:
+    try:
+        brand = Brand.objects.filter(name__iexact=brand_name).first()
+        if not brand:
+            from django.db import connection
+
+            if connection.vendor == "postgresql":
+                brand = Brand.objects.filter(name__unaccent__iexact=brand_name).first()
+            else:
+                brand = Brand.objects.filter(name__icontains=brand_name).first()
+        if not brand:
+            brand = Brand.objects.filter(name__icontains=brand_name).first()
+        if brand:
+            return {
+                "id": brand.id,
+                "name": brand.name,
+                "slug": brand.slug,
+                "logo": brand.logo,
+                "logo_dark": brand.logo_dark,
+            }
+        logger.debug(f"Brand not found: {brand_name}")
+    except Exception as e:
+        logger.warning(f"Error enriching brand {brand_name}: {str(e)}")
+    return {"name": brand_name}
+
+
+def _find_club_by_team_name(team_name: str) -> Club | None:
+    from django.db import connection
+
+    club = Club.objects.filter(name__iexact=team_name).first()
+    if club:
+        return club
+    if connection.vendor == "postgresql":
+        return Club.objects.filter(name__unaccent__iexact=team_name).first()
+    return Club.objects.filter(name__icontains=team_name).first()
+
+
+def _find_club_by_kit_id(kit_id: Any) -> Club | None:
+    kit_obj = Kit.objects.filter(kit_id=str(kit_id)).first()
+    return kit_obj.team if kit_obj else None
+
+
+def _find_club_by_kit_url(kit_url: str) -> Club | None:
+    if not kit_url or kit_url.count("/") < 2:
+        return None
+    kit_slug = kit_url.strip("/").split("/")[-2]
+    club_slug_candidate = re.sub(
+        r"-\d{4}(?:-\d{2}){0,2}", "", kit_slug, flags=re.IGNORECASE
+    )
+    club_slug_candidate = re.sub(
+        r"-(?:home|away|third|gk-\d+|special)-kit$",
+        "",
+        club_slug_candidate,
+        flags=re.IGNORECASE,
+    )
+    potential = club_slug_candidate.strip("-")
+    if not potential:
+        return None
+    kit_obj = Kit.objects.filter(slug__istartswith=potential).first()
+    return kit_obj.team if kit_obj else Club.objects.filter(slug__iexact=potential).first()
+
+
+def _enrich_kit_club(team_name: str, kit_url: str, kit_id: Any) -> dict:
+    try:
+        club = (
+            _find_club_by_team_name(team_name)
+            or (kit_id and _find_club_by_kit_id(kit_id))
+            or (kit_url and _find_club_by_kit_url(kit_url))
+        )
+        if club:
+            return {
+                "id": club.id,
+                "name": club.name,
+                "slug": club.slug,
+                "logo": club.logo,
+                "logo_dark": club.logo_dark,
+                "country": str(club.country) if club.country else None,
+            }
+        logger.debug(f"Club not found: {team_name} (URL: {kit_url})")
+    except Exception as e:
+        logger.warning(f"Error enriching club {team_name}: {str(e)}")
+    return {"name": team_name}
+
+
 def _enrich_collection_entry(entry: dict) -> dict:
     """
     Enrich a collection entry with Brand and Club data from database.
@@ -1457,131 +1495,17 @@ def _enrich_collection_entry(entry: dict) -> dict:
     Returns:
         dict: Enriched entry with brand and club data
     """
-    import re
-
     enriched = entry.copy()
-
-    # Enrich Brand data
-    if "kit" in enriched and isinstance(enriched["kit"], dict):
-        kit = enriched["kit"].copy()
-        brand_name = kit.get("brand_name")
-
-        if brand_name:
-            try:
-                brand = None
-                # First try: exact match (case-insensitive)
-                brand = Brand.objects.filter(name__iexact=brand_name).first()
-
-                # Second try: unaccent search (handles special characters like ö, é, etc.)
-                if not brand:
-                    from django.db import connection
-
-                    # Use unaccent filter if PostgreSQL, otherwise icontains
-                    if connection.vendor == "postgresql":
-                        brand = Brand.objects.filter(name__unaccent__iexact=brand_name).first()
-                    else:
-                        brand = Brand.objects.filter(name__icontains=brand_name).first()
-
-                # Third try: contains search as fallback
-                if not brand:
-                    brand = Brand.objects.filter(name__icontains=brand_name).first()
-
-                if brand:
-                    kit["brand"] = {
-                        "id": brand.id,
-                        "name": brand.name,
-                        "slug": brand.slug,
-                        "logo": brand.logo,
-                        "logo_dark": brand.logo_dark,
-                    }
-                else:
-                    logger.debug(f"Brand not found: {brand_name}")
-                    # Keep brand_name but no additional data
-                    kit["brand"] = {"name": brand_name}
-            except Exception as e:
-                logger.warning(f"Error enriching brand {brand_name}: {str(e)}")
-                kit["brand"] = {"name": brand_name}
-
-        # Enrich Club data
-        team_name = kit.get("team_name")
-        kit_url = kit.get("url", "")
-        kit_id = kit.get("id")
-
-        if team_name:
-            club = None
-            try:
-                from django.db import connection
-
-                # First try: exact match (case-insensitive)
-                club = Club.objects.filter(name__iexact=team_name).first()
-
-                # Second try: unaccent search (handles special characters)
-                if not club:
-                    if connection.vendor == "postgresql":
-                        club = Club.objects.filter(name__unaccent__iexact=team_name).first()
-                    else:
-                        club = Club.objects.filter(name__icontains=team_name).first()
-
-                # Third try: contains search as fallback
-                if not club:
-                    club = Club.objects.filter(name__icontains=team_name).first()
-
-                # Fifth try: if kit_id is available, search Kit by kit_id
-                if not club and kit_id:
-                    kit_obj = Kit.objects.filter(kit_id=str(kit_id)).first()
-                    if kit_obj:
-                        club = kit_obj.team
-
-                # Sixth try: if not found, extract club slug from kit URL
-                if not club and kit_url:
-                    # Extract kit slug from URL: /ss-lazio-2020-21-home-kit/9280/ -> ss-lazio-2020-21-home-kit
-                    kit_slug = kit_url.strip("/").split("/")[-2] if kit_url.count("/") >= 2 else None
-
-                    if kit_slug:
-                        # Try to extract club slug by removing year and kit type
-                        # Pattern: club-slug-year-type-kit -> club-slug
-                        # Examples: ss-lazio-2020-21-home-kit -> ss-lazio
-                        #           arsenal-2024-25-away-kit -> arsenal
-                        #           manchester-united-2023-24-third-kit -> manchester-united
-
-                        # Remove year pattern (e.g., -2020-21, -2024-25, -2020)
-                        # Matches: -2020-21, -2024-25, -2020, -2024-25-26
-                        club_slug_candidate = re.sub(r"-\d{4}(?:-\d{2}){0,2}", "", kit_slug, flags=re.IGNORECASE)
-
-                        # Remove kit type pattern (e.g., -home-kit, -away-kit, -third-kit, -gk-1-kit, -special-kit)
-                        club_slug_candidate = re.sub(
-                            r"-(?:home|away|third|gk-\d+|special)-kit$", "", club_slug_candidate, flags=re.IGNORECASE
-                        )
-
-                        potential_club_slug = club_slug_candidate.strip("-")
-
-                        if potential_club_slug:
-                            # Search in Kit table by slug that starts with club slug
-                            kit_obj = Kit.objects.filter(slug__istartswith=potential_club_slug).first()
-                            if kit_obj:
-                                club = kit_obj.team
-                            else:
-                                # Try direct Club lookup by slug
-                                club = Club.objects.filter(slug__iexact=potential_club_slug).first()
-
-                if club:
-                    kit["club"] = {
-                        "id": club.id,
-                        "name": club.name,
-                        "slug": club.slug,
-                        "logo": club.logo,
-                        "logo_dark": club.logo_dark,
-                        "country": str(club.country) if club.country else None,
-                    }
-                else:
-                    logger.debug(f"Club not found: {team_name} (URL: {kit_url})")
-                    # Keep team_name but no additional data
-                    kit["club"] = {"name": team_name}
-
-            except Exception as e:
-                logger.warning(f"Error enriching club {team_name}: {str(e)}")
-                kit["club"] = {"name": team_name}
-
-        enriched["kit"] = kit
-
+    if "kit" not in enriched or not isinstance(enriched["kit"], dict):
+        return enriched
+    kit = enriched["kit"].copy()
+    brand_name = kit.get("brand_name")
+    if brand_name:
+        kit["brand"] = _enrich_kit_brand(brand_name)
+    team_name = kit.get("team_name")
+    if team_name:
+        kit["club"] = _enrich_kit_club(
+            team_name, kit.get("url", ""), kit.get("id")
+        )
+    enriched["kit"] = kit
     return enriched

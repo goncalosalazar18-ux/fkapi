@@ -1,3 +1,4 @@
+{% load docs_filters %}
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
@@ -223,10 +224,10 @@
             {% if toc %}
             <div style="background: var(--code-bg); padding: 1rem; border-radius: 6px; margin-bottom: 2rem; border: 1px solid var(--border);">
                 <strong style="color: var(--text-primary);">Table of Contents</strong>
-                {{ toc|safe }}
+                {{ toc|sanitize_html }}
             </div>
             {% endif %}
-            {{ content|safe }}
+            {{ content|sanitize_html }}
         </div>
     </div>
     <script>

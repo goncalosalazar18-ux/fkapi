@@ -50,7 +50,7 @@ class SeasonAdmin(admin.ModelAdmin):
 admin.site.register(Season, SeasonAdmin)
 
 
-class Type_KAdmin(admin.ModelAdmin):
+class TypeKAdmin(admin.ModelAdmin):
     list_display = ("name", "category", "category_order", "order_priority", "is_goalkeeper")
     list_filter = ("category", "is_goalkeeper", "category_order")
     search_fields = ("name",)
@@ -58,7 +58,7 @@ class Type_KAdmin(admin.ModelAdmin):
     readonly_fields = ("category", "category_order", "order_priority", "is_goalkeeper")
 
 
-admin.site.register(Type_K, Type_KAdmin)
+admin.site.register(Type_K, TypeKAdmin)
 
 
 class CompetitionAdmin(admin.ModelAdmin):
