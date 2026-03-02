@@ -1,13 +1,31 @@
-# Documentation Index
+# FKAPI – Football Kit Archive API
 
-[![codecov](https://codecov.io/gh/sunr4y/fkapi/graph/badge.svg?token=GK17MP3KNY)](https://codecov.io/gh/sunr4y/fkapi)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=sunr4y_fkapi&metric=alert_status&token=98224e19ab308456580633cd3ce07e0f37a4b083)](https://sonarcloud.io/summary/new_code?id=sunr4y_fkapi)
-[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=sunr4y_fkapi&metric=bugs&token=98224e19ab308456580633cd3ce07e0f37a4b083)](https://sonarcloud.io/summary/new_code?id=sunr4y_fkapi)
-[![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=sunr4y_fkapi&metric=ncloc&token=98224e19ab308456580633cd3ce07e0f37a4b083)](https://sonarcloud.io/summary/new_code?id=sunr4y_fkapi)
-[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=sunr4y_fkapi&metric=security_rating&token=98224e19ab308456580633cd3ce07e0f37a4b083)](https://sonarcloud.io/summary/new_code?id=sunr4y_fkapi)
-[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=sunr4y_fkapi&metric=sqale_rating&token=98224e19ab308456580633cd3ce07e0f37a4b083)](https://sonarcloud.io/summary/new_code?id=sunr4y_fkapi)
-[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=sunr4y_fkapi&metric=vulnerabilities&token=98224e19ab308456580633cd3ce07e0f37a4b083)](https://sonarcloud.io/summary/new_code?id=sunr4y_fkapi)
-[![Quality gate](https://sonarcloud.io/api/project_badges/quality_gate?project=sunr4y_fkapi&token=98224e19ab308456580633cd3ce07e0f37a4b083)](https://sonarcloud.io/summary/new_code?id=sunr4y_fkapi)
+<p align="center">
+  <a href="https://codecov.io/gh/sunr4y/fkapi">
+    <img src="https://codecov.io/gh/sunr4y/fkapi/graph/badge.svg?token=GK17MP3KNY" alt="codecov" />
+  </a>
+  <a href="https://sonarcloud.io/summary/new_code?id=sunr4y_fkapi">
+    <img src="https://sonarcloud.io/api/project_badges/measure?project=sunr4y_fkapi&metric=alert_status&token=98224e19ab308456580633cd3ce07e0f37a4b083" alt="Quality Gate Status" />
+  </a>
+  <a href="https://sonarcloud.io/summary/new_code?id=sunr4y_fkapi">
+    <img src="https://sonarcloud.io/api/project_badges/measure?project=sunr4y_fkapi&metric=bugs&token=98224e19ab308456580633cd3ce07e0f37a4b083" alt="Bugs" />
+  </a>
+  <a href="https://sonarcloud.io/summary/new_code?id=sunr4y_fkapi">
+    <img src="https://sonarcloud.io/api/project_badges/measure?project=sunr4y_fkapi&metric=ncloc&token=98224e19ab308456580633cd3ce07e0f37a4b083" alt="Lines of Code" />
+  </a>
+  <a href="https://sonarcloud.io/summary/new_code?id=sunr4y_fkapi">
+    <img src="https://sonarcloud.io/api/project_badges/measure?project=sunr4y_fkapi&metric=security_rating&token=98224e19ab308456580633cd3ce07e0f37a4b083" alt="Security Rating" />
+  </a>
+  <a href="https://sonarcloud.io/summary/new_code?id=sunr4y_fkapi">
+    <img src="https://sonarcloud.io/api/project_badges/measure?project=sunr4y_fkapi&metric=sqale_rating&token=98224e19ab308456580633cd3ce07e0f37a4b083" alt="Maintainability Rating" />
+  </a>
+  <a href="https://sonarcloud.io/summary/new_code?id=sunr4y_fkapi">
+    <img src="https://sonarcloud.io/api/project_badges/measure?project=sunr4y_fkapi&metric=vulnerabilities&token=98224e19ab308456580633cd3ce07e0f37a4b083" alt="Vulnerabilities" />
+  </a>
+
+</p>
+
+## Documentation Index
 
 Welcome to the Football Kit Archive API documentation. This index will help you find the information you need.
 
@@ -54,23 +72,29 @@ The Football Kit Archive API is a Django-based REST API that provides access to 
 
 ## Getting Started
 
-- **[Getting Started Guide](getting-started.md)** - Complete setup guide from scratch, including initial database population and ethical scraping practices
-- **[Developer Onboarding](developer-onboarding.md)** - Guide for new developers joining the project
+| Goal | Document |
+|------|----------|
+| Complete setup from scratch (including initial data population and ethical scraping practices) | **[Getting Started Guide](getting-started.md)** |
+| Join the project as a new developer | **[Developer Onboarding](developer-onboarding.md)** |
 
 ## Core Documentation
 
 ### Setup and Configuration
 
-- **[Getting Started](getting-started.md)** - Complete setup guide from scratch (works with or without Celery)
-- **[Celery Setup](celery-setup.md)** - Optional: Guide to setting up Celery for background tasks (recommended for production)
-- **[Architecture](architecture.md)** - System architecture and design decisions
-- **[Data Flow](data-flow.md)** - How data flows through the system
-- **[Deployment Guide](deployment.md)** - Production deployment instructions
+| Topic | Document |
+|-------|----------|
+| End‑to‑end setup (with or without Celery) | **[Getting Started](getting-started.md)** |
+| Background jobs with Celery (recommended for production) | **[Celery Setup](celery-setup.md)** |
+| System architecture and design decisions | **[Architecture](architecture.md)** |
+| Data flow through the system | **[Data Flow](data-flow.md)** |
+| Production deployment | **[Deployment Guide](deployment.md)** |
 
 ### Scraping
 
-- **[Scraping Guide](scraping-guide.md)** - Comprehensive guide to ethical web scraping
-- **[Quick Scraping](quick-scraping.md)** - Quick reference for common scraping tasks
+| Topic | Document |
+|-------|----------|
+| Full guide to ethical scraping | **[Scraping Guide](scraping-guide.md)** |
+| Quick reference for common scraping tasks | **[Quick Scraping](quick-scraping.md)** |
 
 These guides cover:
 - Ethical scraping practices (robots.txt, Terms of Service)
@@ -81,27 +105,34 @@ These guides cover:
 
 ### API Documentation
 
-- **[Interactive API Docs](http://localhost:8000/api/docs)** - Swagger/OpenAPI interface (when server is running) ⭐
-- **[API Endpoint Catalog](api/endpoint-catalog.md)** - Complete list of API endpoints
-- **[API Usage Examples](api/usage-examples.md)** - Code examples for using the API
-- **[Postman Collection](api/Football-Kit-Archive-API.postman_collection.json)** - Import this into Postman for testing
+| Purpose | Resource |
+|---------|----------|
+| Interactive Swagger/OpenAPI interface (when server is running) ⭐ | **[Interactive API Docs](http://localhost:8000/api/docs)** |
+| Browse all available endpoints | **[API Endpoint Catalog](api/endpoint-catalog.md)** |
+| See code examples for using the API | **[API Usage Examples](api/usage-examples.md)** |
+| Import endpoints into Postman | **[Postman Collection](api/Football-Kit-Archive-API.postman_collection.json)** |
 
 ### Performance and Optimization
 
-- **[Caching Strategy](caching-strategy.md)** - How caching is implemented and configured
+| Topic | Document |
+|-------|----------|
+| Caching implementation and configuration | **[Caching Strategy](caching-strategy.md)** |
 
 ## Development
 
 ### Architecture Decisions
 
-- **[Decision Records](decisions/)** - Architecture Decision Records (ADRs)
-  - [0001: Scraping Framework](decisions/0001-scraping-framework.md)
-  - [0002: Tooling and Standards](decisions/0002-tooling-and-standards.md)
+| Decision | Document |
+|----------|----------|
+| Scraping framework choice | **[0001: Scraping Framework](decisions/0001-scraping-framework.md)** |
+| Tooling and standards | **[0002: Tooling and Standards](decisions/0002-tooling-and-standards.md)** |
 
 
 ## Operations
 
-- **[Troubleshooting](troubleshooting.md)** - Common issues and solutions
+| Topic | Document |
+|-------|----------|
+| Common issues and solutions | **[Troubleshooting](troubleshooting.md)** |
 
 ## Quick Reference
 
@@ -152,17 +183,18 @@ ruff format .
 
 ### I want to...
 
-- **Set up the project from scratch** → [Getting Started Guide](getting-started.md)
-- **Set up without Celery** → [Getting Started Guide](getting-started.md) (works without Celery)
-- **Configure Celery (optional)** → [Celery Setup](celery-setup.md) (recommended for production)
-- **Learn about ethical scraping** → [Scraping Guide](scraping-guide.md)
-- **Quick scraping reference** → [Quick Scraping](quick-scraping.md)
-- **Deploy to production** → [Deployment Guide](deployment.md)
-- **Understand the architecture** → [Architecture](architecture.md)
-- **Use the API** → [API Endpoint Catalog](api/endpoint-catalog.md)
-- **Troubleshoot issues** → [Troubleshooting](troubleshooting.md)
-- **Understand decisions** → [Decision Records](decisions/)
-- **Onboard as developer** → [Developer Onboarding](developer-onboarding.md)
+| I want to… | Go to… |
+|-----------|--------|
+| Set up the project from scratch (with or without Celery) | **[Getting Started Guide](getting-started.md)** |
+| Configure Celery (optional, recommended for production) | **[Celery Setup](celery-setup.md)** |
+| Learn about ethical scraping | **[Scraping Guide](scraping-guide.md)** |
+| Get a quick scraping reference | **[Quick Scraping](quick-scraping.md)** |
+| Deploy to production | **[Deployment Guide](deployment.md)** |
+| Understand the architecture | **[Architecture](architecture.md)** |
+| Explore all API endpoints | **[API Endpoint Catalog](api/endpoint-catalog.md)** |
+| Troubleshoot issues | **[Troubleshooting](troubleshooting.md)** |
+| Review architectural decisions | **[Decision Records](decisions/)** |
+| Onboard as a developer | **[Developer Onboarding](developer-onboarding.md)** |
 
 ## Documentation Standards
 
@@ -214,5 +246,5 @@ For detailed information, see: **[Documentation Access Guide](documentation-acce
 
 ---
 
-**Last Updated**: 2026-01-17
+**Last Updated**: 2026-03-02
 **Maintained by**: sunr4y
