@@ -1,9 +1,10 @@
-# Force fresh Docker build
+# Railway config: use Dockerfile
 [build]
   dockerfilePath = "fkapi/Dockerfile"
 
-  [deploy]
-    healthcheckPath = "/api/health"
-      healthcheckTimeout = 30
-        restartPolicyType = "ON_FAILURE"
-          restartPolicyMaxRetries = 3
+[deploy]
+  startCommand = "gunicorn --bind 0.0.0.0:$PORT --workers 4 --timeout 120 fkapi.wsgi:application"
+  healthcheckPath = "/api/health"
+  healthcheckTimeout = 60
+  restartPolicyType = "ON_FAILURE"
+  restartPolicyMaxRetries = 3
