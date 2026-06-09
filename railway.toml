@@ -1,0 +1,10 @@
+[build]
+  dockerfilePath = "fkapi/Dockerfile"
+    buildContext = "fkapi"
+
+    [deploy]
+      startCommand = "sh -c 'if [ \"$DJANGO_DEBUG\" = \"True\" ]; then python manage.py runserver 0.0.0.0:8000; else gunicorn --bind 0.0.0.0:8000 --workers 4 --timeout 120 fkapi.wsgi:application; fi'"
+        healthcheckPath = "/api/health"
+          healthcheckTimeout = 30
+            restartPolicyType = "ON_FAILURE"
+              restartPolicyMaxRetries = 3
