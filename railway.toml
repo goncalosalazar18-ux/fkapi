@@ -1,3 +1,4 @@
+# Force fresh Docker build
 [build]
   dockerfilePath = "fkapi/Dockerfile"
 
