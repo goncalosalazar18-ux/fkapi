@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
-COPY requirements.txt .
+COPY fkapi/requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Final stage
@@ -27,18 +27,16 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /root/.local /root/.local
 
 # Copy project files
-COPY . .
+COPY fkapi/ .
 
 # Set Python path
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 ENV PATH=/root/.local/bin:$PATH
 
-# Healthcheck - uses http.client to avoid following redirects
-# Accepts both 200 (OK) and 301 (redirect) as healthy responses
-# This prevents SSL handshake timeout when SECURE_SSL_REDIRECT is enabled
+# Healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import http.client; conn = http.client.HTTPConnection('127.0.0.1', 8000, timeout=5); conn.request('GET', '/api/health'); resp = conn.getresponse(); exit(0 if resp.status in (200, 301) else 1)" || exit 1
 
-# Use gunicorn for production, fallback to runserver for development
+# Use gunicorn for production
 CMD ["sh", "-c", "if [ \"$DJANGO_DEBUG\" = \"True\" ]; then python manage.py runserver 0.0.0.0:8000; else gunicorn --bind 0.0.0.0:8000 --workers 4 --timeout 120 fkapi.wsgi:application; fi"]
